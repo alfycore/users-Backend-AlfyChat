@@ -11,13 +11,20 @@ const FROM_EMAIL = process.env.SMTP_USER || 'no-reply@alfycore.org';
 const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'contact@alfycore.org';
 
 function createTransport() {
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+
+  if (!smtpUser || !smtpPass) {
+    throw new Error('SMTP_USER and SMTP_PASS environment variables are required');
+  }
+
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'mail.infomaniak.com',
     port: Number(process.env.SMTP_PORT) || 587,
     secure: false, // STARTTLS
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user: smtpUser,
+      pass: smtpPass,
     },
     tls: {
       rejectUnauthorized: true,
