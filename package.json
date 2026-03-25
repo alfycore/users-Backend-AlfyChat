@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "bun --hot src/index.ts",
-    "start": "bun dist/index.js",
+    "start": "bun src/index.ts",
     "migrate": "bun src/migrate.ts"
   },
   "dependencies": {
