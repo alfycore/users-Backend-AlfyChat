@@ -133,3 +133,25 @@ adminRouter.get('/invite-links',
 adminRouter.delete('/invite-links/:linkId',
   adminController.deleteInviteLink.bind(adminController)
 );
+
+// ============ CHANGELOGS ============
+
+// Récupérer tous les changelogs (aussi accessible publiquement via /users/changelogs)
+adminRouter.get('/changelogs',
+  adminController.getChangelogs.bind(adminController)
+);
+
+// Créer un changelog
+adminRouter.post('/changelogs',
+  body('version').isString().isLength({ min: 1, max: 50 }),
+  body('title').isString().isLength({ min: 1, max: 255 }),
+  body('content').isString().isLength({ min: 1 }),
+  body('type').optional().isIn(['feature', 'fix', 'improvement', 'security', 'breaking']),
+  validateRequest,
+  adminController.createChangelog.bind(adminController)
+);
+
+// Supprimer un changelog
+adminRouter.delete('/changelogs/:changelogId',
+  adminController.deleteChangelog.bind(adminController)
+);

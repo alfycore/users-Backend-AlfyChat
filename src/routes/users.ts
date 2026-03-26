@@ -8,8 +8,22 @@ import { userController } from '../controllers/users.controller';
 import { authMiddleware } from '../middleware/auth';
 import { validateRequest } from '../middleware/validate';
 import { authController } from '../controllers/auth.controller';
+import { adminService } from '../services/admin.service';
 
 export const usersRouter = Router();
+
+// ============ CHANGELOGS PUBLICS ============
+// Accessible sans authentification via GET /api/users/changelogs
+usersRouter.get('/changelogs', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+    const offset = parseInt(req.query.offset as string) || 0;
+    const changelogs = await adminService.getChangelogs(limit, offset);
+    res.json(changelogs);
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 
 // Récupérer l'utilisateur courant (doit être avant /:userId)
 usersRouter.get('/me',

@@ -352,4 +352,21 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
       if (e?.errno !== 1060) console.log('E2EE migration warning:', e?.message);
     }
   }
+
+  // ==========================================
+  // CHANGELOGS
+  // ==========================================
+  await db.execute(
+    `CREATE TABLE IF NOT EXISTS changelogs (
+      id VARCHAR(36) PRIMARY KEY,
+      version VARCHAR(50) NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      content TEXT NOT NULL,
+      type ENUM('feature', 'fix', 'improvement', 'security', 'breaking') DEFAULT 'feature',
+      created_by VARCHAR(36) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_created_at (created_at),
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
 }

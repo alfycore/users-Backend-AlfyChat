@@ -472,6 +472,39 @@ export class AdminService {
       lastSeenAt: row.last_seen_at,
     };
   }
+
+  // ============ CHANGELOGS ============
+
+  async getChangelogs(limit = 50, offset = 0) {
+    const [rows] = await this.db.query(
+      `SELECT c.*, u.username as author_username, u.display_name as author_display_name
+       FROM changelogs c
+       LEFT JOIN users u ON c.created_by = u.id
+       ORDER BY c.created_at DESC
+       LIMIT ${limit} OFFSET ${offset}`
+    );
+    return rows as any[];
+  }
+
+  async createChangelog(data: {
+    version: string;
+    title: string;
+    content: string;
+    type: 'feature' | 'fix' | 'improvement' | 'security' | 'breaking';
+    createdBy: string;
+  }) {
+    const id = uuidv4();
+    await this.db.execute(
+      `INSERT INTO changelogs (id, version, title, content, type, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
+      [id, data.version, data.title, data.content, data.type, data.createdBy]
+    );
+    const [rows] = await this.db.query(`SELECT * FROM changelogs WHERE id = ?`, [id]);
+    return (rows as any[])[0];
+  }
+
+  async deleteChangelog(changelogId: string) {
+    await this.db.execute(`DELETE FROM changelogs WHERE id = ?`, [changelogId]);
+  }
 }
 
 export const adminService = new AdminService();

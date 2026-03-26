@@ -41,7 +41,7 @@ interface AuthResult {
 export class AuthService {
   private readonly JWT_SECRET = process.env.JWT_SECRET || 'alfychat-super-secret-key-dev-2026';
   private readonly ACCESS_TOKEN_EXPIRY = '15m';
-  private readonly REFRESH_TOKEN_EXPIRY = '7d';
+  private readonly REFRESH_TOKEN_EXPIRY = '365d';
   private readonly ACCESS_TOKEN_EXPIRY_SECONDS = 15 * 60;
 
   private get db() {
@@ -274,7 +274,7 @@ export class AuthService {
   // Déconnexion
   async logout(refreshToken: string): Promise<void> {
     // Révoquer le token
-    await this.redis.set(`revoked:${refreshToken}`, '1', 7 * 24 * 60 * 60);
+    await this.redis.set(`revoked:${refreshToken}`, '1', 365 * 24 * 60 * 60);
 
     // Supprimer la session
     await this.db.execute(
@@ -293,7 +293,7 @@ export class AuthService {
 
     // Révoquer tous les tokens
     for (const row of rows as any[]) {
-      await this.redis.set(`revoked:${row.refresh_token}`, '1', 7 * 24 * 60 * 60);
+      await this.redis.set(`revoked:${row.refresh_token}`, '1', 365 * 24 * 60 * 60);
     }
 
     // Supprimer toutes les sessions
@@ -342,7 +342,7 @@ export class AuthService {
 
     // Sauvegarder la session
     const sessionId = uuidv4();
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
     await this.db.execute(
       `INSERT INTO sessions (id, user_id, refresh_token, expires_at, ip_address, user_agent)

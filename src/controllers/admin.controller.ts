@@ -234,6 +234,55 @@ export class AdminController {
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }
+
+  // ============ CHANGELOGS ============
+
+  async getChangelogs(req: AuthRequest, res: Response) {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const changelogs = await adminService.getChangelogs(limit, offset);
+      res.json(changelogs);
+    } catch (error) {
+      logger.error('Erreur récupération changelogs:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
+
+  async createChangelog(req: AuthRequest, res: Response) {
+    try {
+      const { version, title, content, type } = req.body;
+      if (!version || !title || !content) {
+        return res.status(400).json({ error: 'version, title et content requis' });
+      }
+      const validTypes = ['feature', 'fix', 'improvement', 'security', 'breaking'];
+      const changelogType = validTypes.includes(type) ? type : 'feature';
+      const changelog = await adminService.createChangelog({
+        version,
+        title,
+        content,
+        type: changelogType,
+        createdBy: req.userId!,
+      });
+      logger.info(`Changelog créé: ${changelog.id} par ${req.userId}`);
+      res.status(201).json(changelog);
+    } catch (error) {
+      logger.error('Erreur création changelog:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
+
+  async deleteChangelog(req: AuthRequest, res: Response) {
+    try {
+      const { changelogId } = req.params;
+      await adminService.deleteChangelog(changelogId);
+      logger.info(`Changelog ${changelogId} supprimé par ${req.userId}`);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('Erreur suppression changelog:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
 }
 
 export const adminController = new AdminController();
