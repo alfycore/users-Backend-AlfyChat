@@ -22,8 +22,12 @@ export function getDatabaseClient(config?: DatabaseConfig) {
       user: config.user,
       password: config.password,
       database: config.database,
-      connectionLimit: 10,
+      connectionLimit: 30,
       waitForConnections: true,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 0,
+      connectTimeout: 10000,
+      idleTimeout: 60000,
     });
   }
   
