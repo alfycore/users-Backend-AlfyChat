@@ -491,12 +491,13 @@ export class AdminService {
     title: string;
     content: string;
     type: 'feature' | 'fix' | 'improvement' | 'security' | 'breaking';
+    bannerUrl?: string | null;
     createdBy: string;
   }) {
     const id = uuidv4();
     await this.db.execute(
-      `INSERT INTO changelogs (id, version, title, content, type, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, data.version, data.title, data.content, data.type, data.createdBy]
+      `INSERT INTO changelogs (id, version, title, content, type, banner_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [id, data.version, data.title, data.content, data.type, data.bannerUrl ?? null, data.createdBy]
     );
     const [rows] = await this.db.query(`SELECT * FROM changelogs WHERE id = ?`, [id]);
     return (rows as any[])[0];

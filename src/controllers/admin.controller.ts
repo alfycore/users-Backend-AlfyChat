@@ -251,7 +251,7 @@ export class AdminController {
 
   async createChangelog(req: AuthRequest, res: Response) {
     try {
-      const { version, title, content, type } = req.body;
+      const { version, title, content, type, bannerUrl } = req.body;
       if (!version || !title || !content) {
         return res.status(400).json({ error: 'version, title et content requis' });
       }
@@ -262,6 +262,7 @@ export class AdminController {
         title,
         content,
         type: changelogType,
+        bannerUrl: typeof bannerUrl === 'string' && bannerUrl.trim() ? bannerUrl.trim() : null,
         createdBy: req.userId!,
       });
       logger.info(`Changelog créé: ${changelog.id} par ${req.userId}`);

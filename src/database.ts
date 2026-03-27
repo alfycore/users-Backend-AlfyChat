@@ -379,10 +379,18 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
       title VARCHAR(255) NOT NULL,
       content TEXT NOT NULL,
       type ENUM('feature', 'fix', 'improvement', 'security', 'breaking') DEFAULT 'feature',
+      banner_url TEXT NULL,
       created_by VARCHAR(36) NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_created_at (created_at),
       FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   );
+
+  // Migrations: banner_url column for changelogs
+  try {
+    await db.execute(`ALTER TABLE changelogs ADD COLUMN banner_url TEXT NULL DEFAULT NULL`);
+  } catch (e: any) {
+    if (e?.errno !== 1060) console.log('[DB] changelogs.banner_url already exists');
+  }
 }
