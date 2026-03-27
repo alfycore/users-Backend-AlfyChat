@@ -178,10 +178,26 @@ export class UserService {
   }
 
   // Mettre à jour le statut
-  async updateStatus(userId: string, status: UserStatus): Promise<void> {
+  async updateStatus(userId: string, status: UserStatus, customStatus?: string): Promise<void> {
+    if (customStatus !== undefined) {
+      await this.db.execute(
+        'UPDATE users SET status = ?, is_online = ?, custom_status = ? WHERE id = ?',
+        [status, status !== 'offline', customStatus.slice(0, 100), userId]
+      );
+    } else {
+      await this.db.execute(
+        'UPDATE users SET status = ?, is_online = ? WHERE id = ?',
+        [status, status !== 'offline', userId]
+      );
+    }
+    await this.invalidateCache(userId);
+  }
+
+  // Mettre à jour uniquement le statut personnalisé
+  async updateCustomStatus(userId: string, customStatus: string | null): Promise<void> {
     await this.db.execute(
-      'UPDATE users SET status = ?, is_online = ? WHERE id = ?',
-      [status, status !== 'offline', userId]
+      'UPDATE users SET custom_status = ? WHERE id = ?',
+      [customStatus ? customStatus.slice(0, 100) : null, userId]
     );
     await this.invalidateCache(userId);
   }
@@ -424,6 +440,7 @@ export class UserService {
       tutorialCompleted: Boolean(row.tutorial_completed),
       role: row.role || 'user',
       status: row.status,
+      customStatus: row.custom_status || null,
       isOnline: Boolean(row.is_online),
       createdAt: row.created_at,
       lastSeenAt: row.last_seen_at,

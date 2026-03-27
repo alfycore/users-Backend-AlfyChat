@@ -73,8 +73,17 @@ usersRouter.patch('/:userId',
 // Mettre à jour le statut
 usersRouter.patch('/:userId/status',
   body('status').isIn(['online', 'idle', 'dnd', 'invisible', 'offline']),
+  body('customStatus').optional({ nullable: true }).isString().isLength({ max: 100 }),
   validateRequest,
   userController.updateStatus.bind(userController)
+);
+
+// Mettre à jour le statut personnalisé uniquement
+usersRouter.patch('/:userId/custom-status',
+  authMiddleware,
+  body('customStatus').optional({ nullable: true }).isString().isLength({ max: 100 }),
+  validateRequest,
+  userController.updateCustomStatus.bind(userController)
 );
 
 // Mettre à jour last seen

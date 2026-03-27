@@ -117,12 +117,26 @@ export class UserController {
   async updateStatus(req: Request, res: Response) {
     try {
       const { userId } = req.params;
-      const { status } = req.body;
+      const { status, customStatus } = req.body;
 
-      await userService.updateStatus(userId, status);
+      await userService.updateStatus(userId, status, customStatus);
       res.json({ success: true });
     } catch (error) {
       logger.error('Erreur mise à jour statut:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
+
+  // Mettre à jour le statut personnalisé
+  async updateCustomStatus(req: Request, res: Response) {
+    try {
+      const { userId } = req.params;
+      const { customStatus } = req.body;
+
+      await userService.updateCustomStatus(userId, customStatus ?? null);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('Erreur mise à jour statut personnalisé:', error);
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }

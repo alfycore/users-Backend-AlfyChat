@@ -354,6 +354,22 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
   }
 
   // ==========================================
+  // CUSTOM STATUS (ALTER pour les DBs existantes)
+  // ==========================================
+  {
+    const sqls = [
+      `ALTER TABLE users ADD COLUMN custom_status VARCHAR(100) NULL DEFAULT NULL`,
+    ];
+    for (const sql of sqls) {
+      try {
+        await db.execute(sql);
+      } catch (e: any) {
+        if (e?.errno !== 1060) console.log('custom_status migration warning:', e?.message);
+      }
+    }
+  }
+
+  // ==========================================
   // CHANGELOGS
   // ==========================================
   await db.execute(

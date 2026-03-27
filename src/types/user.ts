@@ -13,6 +13,7 @@ export interface User {
   bio?: string;
   role?: 'user' | 'moderator' | 'admin';
   status: UserStatus;
+  customStatus?: string;
   isOnline: boolean;
   createdAt?: Date;
   lastSeenAt?: Date;
