@@ -70,8 +70,9 @@ usersRouter.patch('/:userId',
   userController.updateProfile.bind(userController)
 );
 
-// Mettre à jour le statut
+// Mettre à jour le statut (authentifié — seul l'utilisateur peut modifier son propre statut)
 usersRouter.patch('/:userId/status',
+  authMiddleware,
   body('status').isIn(['online', 'idle', 'dnd', 'invisible', 'offline']),
   body('customStatus').optional({ nullable: true }).isString().isLength({ max: 100 }),
   validateRequest,

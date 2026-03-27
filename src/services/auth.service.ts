@@ -39,10 +39,20 @@ interface AuthResult {
 }
 
 export class AuthService {
-  private readonly JWT_SECRET = process.env.JWT_SECRET || 'alfychat-super-secret-key-dev-2026';
+  private readonly JWT_SECRET: string;
+  private readonly JWT_REFRESH_SECRET: string;
   private readonly ACCESS_TOKEN_EXPIRY = '15m';
   private readonly REFRESH_TOKEN_EXPIRY = '365d';
   private readonly ACCESS_TOKEN_EXPIRY_SECONDS = 15 * 60;
+
+  constructor() {
+    const secret = process.env.JWT_SECRET;
+    const refreshSecret = process.env.JWT_REFRESH_SECRET;
+    if (!secret) throw new Error('JWT_SECRET environment variable is required');
+    if (!refreshSecret) throw new Error('JWT_REFRESH_SECRET environment variable is required');
+    this.JWT_SECRET = secret;
+    this.JWT_REFRESH_SECRET = refreshSecret;
+  }
 
   private get db() {
     return getDatabaseClient();
@@ -225,7 +235,7 @@ export class AuthService {
   async refreshTokens(refreshToken: string): Promise<AuthResult> {
     try {
       // Vérifier le token
-      const payload = jwt.verify(refreshToken, this.JWT_SECRET) as TokenPayload;
+      const payload = jwt.verify(refreshToken, this.JWT_REFRESH_SECRET) as TokenPayload;
 
       if (payload.type !== 'refresh') {
         return { success: false, error: 'Token invalide' };
@@ -336,7 +346,7 @@ export class AuthService {
 
     const refreshToken = jwt.sign(
       { userId, type: 'refresh' } as TokenPayload,
-      this.JWT_SECRET,
+      this.JWT_REFRESH_SECRET,
       { expiresIn: this.REFRESH_TOKEN_EXPIRY }
     );
 

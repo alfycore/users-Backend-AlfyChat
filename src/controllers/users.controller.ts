@@ -114,9 +114,15 @@ export class UserController {
   }
 
   // Mettre à jour le statut
-  async updateStatus(req: Request, res: Response) {
+  async updateStatus(req: AuthRequest, res: Response) {
     try {
       const { userId } = req.params;
+
+      // Vérifier que l'utilisateur modifie son propre statut
+      if (req.userId !== userId) {
+        return res.status(403).json({ error: 'Non autorisé' });
+      }
+
       const { status, customStatus } = req.body;
 
       await userService.updateStatus(userId, status, customStatus);
