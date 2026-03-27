@@ -12,6 +12,14 @@ import { AuthRequest } from '../types/express';
 const authService = new AuthService();
 const adminService = new AdminService();
 
+/** Normalise les adresses IPv4-mapped IPv6 (::ffff:1.2.3.4 → 1.2.3.4) */
+function normalizeIP(ip: string | undefined): string {
+  if (!ip) return 'inconnu';
+  if (ip.startsWith('::ffff:')) return ip.slice(7);
+  if (ip === '::1') return '127.0.0.1';
+  return ip;
+}
+
 export class AuthController {
   // Paramètres d'inscription publics
   async getRegisterSettings(req: Request, res: Response) {
@@ -76,7 +84,7 @@ export class AuthController {
         ...(publicKey && { publicKey }),
         ...(encryptedPrivateKey && { encryptedPrivateKey }),
         ...(keySalt && { keySalt }),
-      }, req.ip, req.get('user-agent'));
+      }, normalizeIP(req.ip), req.get('user-agent'));
 
       if (!result.success) {
         return res.status(400).json({ error: result.error });
@@ -122,7 +130,7 @@ export class AuthController {
         }
       }
 
-      const result = await authService.login(email, password, req.ip, req.get('user-agent'));
+      const result = await authService.login(email, password, normalizeIP(req.ip), req.get('user-agent'));
 
       if (!result.success) {
         if (result.emailNotVerified) {
@@ -294,7 +302,7 @@ export class AuthController {
       if (!twoFactorToken || !code) {
         return res.status(400).json({ error: 'Données manquantes' });
       }
-      const result = await authService.loginWith2FA(twoFactorToken, code, req.ip, req.get('user-agent'));
+      const result = await authService.loginWith2FA(twoFactorToken, code, normalizeIP(req.ip), req.get('user-agent'));
       if (!result.success) {
         return res.status(401).json({ error: result.error });
       }
