@@ -2,7 +2,7 @@
 // ALFYCHAT - SERVICE UTILISATEURS
 // ==========================================
 
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { getDatabaseClient } from '../database';
 import { getRedisClient } from '../redis';
 import { User, UserPreferences, UserStatus } from '../types/user';
