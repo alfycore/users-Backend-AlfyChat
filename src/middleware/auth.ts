@@ -34,7 +34,7 @@ export async function authMiddleware(
     }
 
     // Vérifier le token
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+    const decoded = jwt.verify(token, JWT_SECRET as string) as unknown as { userId: string };
     
     // Ajouter l'userId à la requête
     (req as any).userId = decoded.userId;
