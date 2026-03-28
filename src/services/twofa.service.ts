@@ -2,7 +2,7 @@
 // ALFYCHAT - SERVICE 2FA (TOTP)
 // ==========================================
 
-import { generateSecret, generateURI, verify } from 'otplib';
+import { authenticator } from 'otplib';
 import qrcode from 'qrcode';
 import crypto from 'crypto';
 import { getDatabaseClient } from '../database';
@@ -26,12 +26,8 @@ export class TwoFactorService {
     otpauthUrl: string;
     qrCodeDataUrl: string;
   }> {
-    const secret = generateSecret();
-    const otpauthUrl = generateURI({
-      issuer: APP_NAME,
-      label: userEmail,
-      secret,
-    });
+    const secret = authenticator.generateSecret();
+    const otpauthUrl = authenticator.keyuri(userEmail, APP_NAME, secret);
     const qrCodeDataUrl = await qrcode.toDataURL(otpauthUrl);
 
     // Stocker le secret temporaire (pas encore activé) dans Redis, expire dans 10 minutes
@@ -47,8 +43,8 @@ export class TwoFactorService {
       return { success: false, error: 'Session expirée. Veuillez recommencer la configuration.' };
     }
 
-    const result = await verify({ secret: pendingSecret, token: totpCode });
-    if (!result.valid) {
+    const isValid = authenticator.check(totpCode, pendingSecret);
+    if (!isValid) {
       return { success: false, error: 'Code invalide. Vérifiez votre application d\'authentification.' };
     }
 
@@ -81,8 +77,8 @@ export class TwoFactorService {
       return { success: false, error: '2FA non activé sur ce compte.' };
     }
 
-    const result2 = await verify({ secret: user.totp_secret, token: totpCode });
-    if (!result2.valid) {
+    const isValid2 = authenticator.check(totpCode, user.totp_secret);
+    if (!isValid2) {
       return { success: false, error: 'Code invalide.' };
     }
 
@@ -106,8 +102,9 @@ export class TwoFactorService {
     if (!user) return false;
 
     // Vérifier le code TOTP normal (avec tolérance ±1 step)
-    const result = await verify({ secret: user.totp_secret, token: totpCode, epochTolerance: 30 });
-    if (result.valid) return true;
+    authenticator.options = { window: 1 };
+    const isValidTotp = authenticator.check(totpCode, user.totp_secret);
+    if (isValidTotp) return true;
 
     // Vérifier les codes de secours
     if (user.totp_backup_codes) {
