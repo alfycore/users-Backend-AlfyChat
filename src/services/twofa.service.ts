@@ -2,7 +2,7 @@
 // ALFYCHAT - SERVICE 2FA (TOTP)
 // ==========================================
 
-import { authenticator } from 'otplib';
+import * as OTPAuth from 'otpauth';
 import qrcode from 'qrcode';
 import crypto from 'crypto';
 import { getDatabaseClient } from '../database';
@@ -10,6 +10,10 @@ import { getRedisClient } from '../redis';
 import { logger } from '../utils/logger';
 
 const APP_NAME = 'AlfyChat';
+
+function makeTOTP(label: string, secret: OTPAuth.Secret): OTPAuth.TOTP {
+  return new OTPAuth.TOTP({ issuer: APP_NAME, label, algorithm: 'SHA1', digits: 6, period: 30, secret });
+}
 
 export class TwoFactorService {
   private get db() {
@@ -26,14 +30,15 @@ export class TwoFactorService {
     otpauthUrl: string;
     qrCodeDataUrl: string;
   }> {
-    const secret = authenticator.generateSecret();
-    const otpauthUrl = authenticator.keyuri(userEmail, APP_NAME, secret);
+    const secret = new OTPAuth.Secret({ size: 20 });
+    const totp = makeTOTP(userEmail, secret);
+    const otpauthUrl = totp.toString();
     const qrCodeDataUrl = await qrcode.toDataURL(otpauthUrl);
 
     // Stocker le secret temporaire (pas encore activé) dans Redis, expire dans 10 minutes
-    await this.redis.set(`2fa:pending:${userId}`, secret, 10 * 60);
+    await this.redis.set(`2fa:pending:${userId}`, secret.base32, 10 * 60);
 
-    return { secret, otpauthUrl, qrCodeDataUrl };
+    return { secret: secret.base32, otpauthUrl, qrCodeDataUrl };
   }
 
   // Activer le 2FA après vérification du code OTP
@@ -43,7 +48,8 @@ export class TwoFactorService {
       return { success: false, error: 'Session expirée. Veuillez recommencer la configuration.' };
     }
 
-    const isValid = authenticator.check(totpCode, pendingSecret);
+    const totp = makeTOTP('', OTPAuth.Secret.fromBase32(pendingSecret));
+    const isValid = totp.validate({ token: totpCode, window: 1 }) !== null;
     if (!isValid) {
       return { success: false, error: 'Code invalide. Vérifiez votre application d\'authentification.' };
     }
@@ -77,7 +83,8 @@ export class TwoFactorService {
       return { success: false, error: '2FA non activé sur ce compte.' };
     }
 
-    const isValid2 = authenticator.check(totpCode, user.totp_secret);
+    const totp = makeTOTP('', OTPAuth.Secret.fromBase32(user.totp_secret));
+    const isValid2 = totp.validate({ token: totpCode, window: 1 }) !== null;
     if (!isValid2) {
       return { success: false, error: 'Code invalide.' };
     }
@@ -102,8 +109,8 @@ export class TwoFactorService {
     if (!user) return false;
 
     // Vérifier le code TOTP normal (avec tolérance ±1 step)
-    authenticator.options = { window: 1 };
-    const isValidTotp = authenticator.check(totpCode, user.totp_secret);
+    const totp = makeTOTP('', OTPAuth.Secret.fromBase32(user.totp_secret));
+    const isValidTotp = totp.validate({ token: totpCode, window: 1 }) !== null;
     if (isValidTotp) return true;
 
     // Vérifier les codes de secours
