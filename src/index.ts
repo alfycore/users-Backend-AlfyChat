@@ -13,6 +13,7 @@ import { authRouter } from './routes/auth';
 import { rgpdRouter } from './routes/rgpd';
 import { adminRouter } from './routes/admin';
 import { keysRouter } from './routes/keys';
+import { startServiceRegistration, serviceMetricsMiddleware } from './utils/service-client';
 import { getDatabaseClient, runMigrations } from './database';
 import { getRedisClient } from './redis';
 import { logger } from './utils/logger';
@@ -28,6 +29,7 @@ app.use(cors({
 }));
 app.use(helmet());
 app.use(express.json());
+app.use(serviceMetricsMiddleware);
 
 // Rate limiting
 const limiter = rateLimit({
@@ -74,6 +76,7 @@ async function start() {
     const PORT = process.env.PORT || 3001;
     app.listen(PORT, () => {
       logger.info(`🚀 Service Users démarré sur le port ${PORT}`);
+      startServiceRegistration('users');
     });
   } catch (error) {
     logger.error('Erreur au démarrage:', error);
