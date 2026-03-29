@@ -13,7 +13,7 @@ import { authRouter } from './routes/auth';
 import { rgpdRouter } from './routes/rgpd';
 import { adminRouter } from './routes/admin';
 import { keysRouter } from './routes/keys';
-import { startServiceRegistration, serviceMetricsMiddleware } from './utils/service-client';
+import { startServiceRegistration, serviceMetricsMiddleware, collectServiceMetrics } from './utils/service-client';
 import { getDatabaseClient, runMigrations } from './database';
 import { getRedisClient } from './redis';
 import { logger } from './utils/logger';
@@ -49,6 +49,16 @@ app.use('/users/keys', keysRouter);
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'users' });
+});
+
+app.get('/metrics', (req, res) => {
+  res.json({
+    service: 'users',
+    serviceId: process.env.SERVICE_ID || 'users-default',
+    location: (process.env.SERVICE_LOCATION || 'EU').toUpperCase(),
+    ...collectServiceMetrics(),
+    uptime: process.uptime(),
+  });
 });
 
 // Initialisation
