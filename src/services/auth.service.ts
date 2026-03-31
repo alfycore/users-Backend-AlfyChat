@@ -18,6 +18,7 @@ const userService = new UserService();
 interface TokenPayload {
   userId: string;
   type: 'access' | 'refresh';
+  role?: 'user' | 'moderator' | 'admin';
 }
 
 interface AuthResult {
@@ -338,8 +339,15 @@ export class AuthService {
 
   // Générer les tokens
   private async generateTokens(userId: string, ipAddress?: string | null, userAgent?: string | null) {
+    // Récupérer le rôle pour l'inclure dans le JWT
+    let role: 'user' | 'moderator' | 'admin' = 'user';
+    try {
+      const [rows] = await this.db.query('SELECT role FROM users WHERE id = ?', [userId]);
+      if ((rows as any[]).length > 0) role = (rows as any[])[0].role || 'user';
+    } catch { /* fallback to 'user' */ }
+
     const accessToken = jwt.sign(
-      { userId, type: 'access' } as TokenPayload,
+      { userId, type: 'access', role } as TokenPayload,
       this.JWT_SECRET,
       { expiresIn: this.ACCESS_TOKEN_EXPIRY }
     );
