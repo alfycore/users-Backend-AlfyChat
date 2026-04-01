@@ -106,7 +106,8 @@ export class UserController {
         tutorialCompleted,
       });
 
-      res.json({ success: true });
+      const updatedUser = await userService.findById(userId);
+      res.json({ success: true, data: updatedUser });
     } catch (error) {
       logger.error('Erreur mise à jour profil:', error);
       res.status(500).json({ error: 'Erreur serveur' });

@@ -26,9 +26,13 @@ export class UserService {
     }
 
     const [rows] = await this.db.query(
-      `SELECT id, username, email, display_name, avatar_url, banner_url, bio, 
-              card_color, badges, show_badges, role, status, is_online, tutorial_completed, created_at, last_seen_at
-       FROM users WHERE id = ?`,
+      `SELECT u.id, u.username, u.email, u.display_name, u.avatar_url, u.banner_url, u.bio,
+              u.card_color, u.badges, u.show_badges, u.role, u.status, u.is_online,
+              u.tutorial_completed, u.created_at, u.last_seen_at,
+              up.interests
+       FROM users u
+       LEFT JOIN user_preferences up ON up.user_id = u.id
+       WHERE u.id = ?`,
       [userId]
     );
 
