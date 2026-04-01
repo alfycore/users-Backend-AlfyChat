@@ -448,6 +448,11 @@ export class UserService {
       isOnline: Boolean(row.is_online),
       createdAt: row.created_at,
       lastSeenAt: row.last_seen_at,
+      interests: (() => {
+        if (!row.interests) return [];
+        if (Array.isArray(row.interests)) return row.interests;
+        try { return JSON.parse(row.interests); } catch { return []; }
+      })(),
     };
   }
 
