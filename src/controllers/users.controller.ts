@@ -237,8 +237,9 @@ export class UserController {
       const { userId } = req.params;
       const { badgeType } = req.body;
 
-      // TODO: Vérifier que l'utilisateur est admin
-      // Pour le moment, on autorise pour le développement
+      if (req.userRole !== 'admin') {
+        return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+      }
 
       await userService.addBadge(userId, badgeType as BadgeType);
       res.json({ success: true });
@@ -253,7 +254,9 @@ export class UserController {
     try {
       const { userId, badgeId } = req.params;
 
-      // TODO: Vérifier que l'utilisateur est admin
+      if (req.userRole !== 'admin') {
+        return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+      }
 
       await userService.removeBadge(userId, badgeId);
       res.json({ success: true });

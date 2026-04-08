@@ -89,6 +89,7 @@ usersRouter.patch('/:userId/custom-status',
 
 // Mettre à jour last seen
 usersRouter.patch('/:userId/last-seen',
+  authMiddleware,
   userController.updateLastSeen.bind(userController)
 );
 
