@@ -126,6 +126,57 @@ export class AdminService {
         `UPDATE custom_badges SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`,
         params
       );
+
+      // Propager les changements aux utilisateurs qui possèdent ce badge
+      await this.syncBadgeToUsers(badgeId);
+    }
+  }
+
+  /**
+   * Met à jour le snapshot du badge dans la colonne JSON `badges` de tous les utilisateurs
+   * qui possèdent ce badge, afin que les changements d'icône/nom/couleur soient reflétés.
+   */
+  private async syncBadgeToUsers(badgeId: string): Promise<void> {
+    const badge = await this.getCustomBadge(badgeId);
+    if (!badge) return;
+
+    // Récupérer tous les utilisateurs qui ont ce badge dans leur JSON
+    const [rows] = await this.db.query(
+      `SELECT id, badges FROM users WHERE JSON_CONTAINS(badges, JSON_OBJECT('id', ?))`,
+      [badgeId]
+    );
+
+    const users = rows as any[];
+    for (const user of users) {
+      let badges: any[] = [];
+      try {
+        badges = typeof user.badges === 'string' ? JSON.parse(user.badges) : (user.badges || []);
+      } catch { badges = []; }
+
+      const updated = badges.map((b: any) => {
+        if (b.id === badgeId) {
+          return {
+            ...b,
+            name: badge.name,
+            icon: badge.iconValue,
+            iconType: badge.iconType,
+            iconValue: badge.iconValue,
+            color: badge.color,
+          };
+        }
+        return b;
+      });
+
+      await this.db.execute(
+        'UPDATE users SET badges = ? WHERE id = ?',
+        [JSON.stringify(updated), user.id]
+      );
+
+      // Invalider le cache Redis
+      try {
+        const redis = getRedisClient();
+        await redis.del(`user:${user.id}`);
+      } catch { /* ignore */ }
     }
   }
 
