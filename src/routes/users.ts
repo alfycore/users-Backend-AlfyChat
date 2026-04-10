@@ -46,6 +46,11 @@ usersRouter.get('/batch',
   userController.getUsers.bind(userController)
 );
 
+// Vérifier la disponibilité d'un nom d'utilisateur
+usersRouter.get('/check-username/:username',
+  userController.checkUsernameAvailable.bind(userController)
+);
+
 // Récupérer la clé publique E2EE d'un utilisateur
 usersRouter.get('/:userId/public-key',
   authMiddleware,
@@ -114,6 +119,15 @@ usersRouter.post('/:userId/change-password',
   body('newPassword').isString().isLength({ min: 8 }),
   validateRequest,
   userController.changePassword.bind(userController)
+);
+
+// Changer le nom d'utilisateur (authentifié)
+usersRouter.post('/:userId/change-username',
+  authMiddleware,
+  body('newUsername').isString().isLength({ min: 3, max: 32 }).matches(/^[a-z0-9_]+$/),
+  body('password').isString().isLength({ min: 1 }),
+  validateRequest,
+  userController.changeUsername.bind(userController)
 );
 
 // ============ ROUTES BADGES ============

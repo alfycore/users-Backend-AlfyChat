@@ -218,6 +218,42 @@ export class UserController {
     }
   }
 
+  // Vérifier la disponibilité d'un nom d'utilisateur
+  async checkUsernameAvailable(req: Request, res: Response) {
+    try {
+      const { username } = req.params;
+      const available = await userService.checkUsernameAvailable(username);
+      res.json({ available });
+    } catch (error) {
+      logger.error('Erreur vérification username:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
+
+  // Changer le nom d'utilisateur
+  async changeUsername(req: AuthRequest, res: Response) {
+    try {
+      const { userId } = req.params;
+
+      if (req.userId !== userId) {
+        return res.status(403).json({ error: 'Non autorisé' });
+      }
+
+      const { newUsername, password } = req.body;
+      const result = await userService.changeUsername(userId, newUsername, password);
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      const updatedUser = await userService.findById(userId);
+      res.json({ success: true, data: updatedUser });
+    } catch (error) {
+      logger.error('Erreur changement username:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
+
   // ============ GESTION DES BADGES ============
 
   // Récupérer les badges d'un utilisateur

@@ -282,6 +282,51 @@ export class UserService {
     }
   }
 
+  // Vérifier la disponibilité d'un nom d'utilisateur
+  async checkUsernameAvailable(username: string): Promise<boolean> {
+    const [rows] = await this.db.query(
+      'SELECT id FROM users WHERE username = ?',
+      [username]
+    );
+    return (rows as any[]).length === 0;
+  }
+
+  // Changer le nom d'utilisateur (nécessite le mot de passe)
+  async changeUsername(
+    userId: string,
+    newUsername: string,
+    password: string
+  ): Promise<{ success: boolean; error?: string }> {
+    // Vérifier le mot de passe
+    const [rows] = await this.db.query(
+      'SELECT password_hash FROM users WHERE id = ?',
+      [userId]
+    );
+    const users = rows as any[];
+    if (users.length === 0) {
+      return { success: false, error: 'Utilisateur non trouvé' };
+    }
+    const isValid = await bcrypt.compare(password, users[0].password_hash);
+    if (!isValid) {
+      return { success: false, error: 'Mot de passe incorrect' };
+    }
+
+    // Vérifier la disponibilité
+    const available = await this.checkUsernameAvailable(newUsername);
+    if (!available) {
+      return { success: false, error: 'Ce nom d\'utilisateur est déjà pris' };
+    }
+
+    // Mettre à jour
+    await this.db.execute(
+      'UPDATE users SET username = ? WHERE id = ?',
+      [newUsername, userId]
+    );
+    await this.invalidateCache(userId);
+
+    return { success: true };
+  }
+
   // Changer le mot de passe
   async changePassword(
     userId: string,
