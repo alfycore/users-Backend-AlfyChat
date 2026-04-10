@@ -11,7 +11,7 @@ export interface CustomBadge {
   id: string;
   name: string;
   description?: string;
-  iconType: 'bootstrap' | 'svg';
+  iconType: 'bootstrap' | 'svg' | 'flaticon';
   iconValue: string;
   color: string;
   displayOrder: number;
@@ -24,7 +24,7 @@ export interface CustomBadge {
 export interface CreateBadgeData {
   name: string;
   description?: string;
-  iconType: 'bootstrap' | 'svg';
+  iconType: 'bootstrap' | 'svg' | 'flaticon';
   iconValue: string;
   color: string;
   displayOrder?: number;

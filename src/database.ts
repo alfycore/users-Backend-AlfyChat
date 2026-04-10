@@ -149,7 +149,7 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
       id VARCHAR(36) PRIMARY KEY,
       name VARCHAR(100) NOT NULL,
       description TEXT,
-      icon_type ENUM('bootstrap', 'svg') DEFAULT 'bootstrap',
+      icon_type ENUM('bootstrap', 'svg', 'flaticon') DEFAULT 'bootstrap',
       icon_value TEXT NOT NULL,
       color VARCHAR(7) NOT NULL,
       display_order INT DEFAULT 999,
@@ -248,6 +248,13 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
     } catch {
       // Ignorer si la colonne existe déjà
     }
+  }
+
+  // Migration — Ajouter 'flaticon' à l'ENUM icon_type des badges personnalisés
+  try {
+    await db.execute(`ALTER TABLE custom_badges MODIFY COLUMN icon_type ENUM('bootstrap', 'svg', 'flaticon') DEFAULT 'bootstrap'`);
+  } catch {
+    // ignore si déjà à jour
   }
 
   // ==========================================
