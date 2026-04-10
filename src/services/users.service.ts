@@ -27,7 +27,7 @@ export class UserService {
 
     const [rows] = await this.db.query(
       `SELECT u.id, u.username, u.email, u.display_name, u.avatar_url, u.banner_url, u.bio,
-              u.card_color, u.badges, u.show_badges, u.role, u.status, u.is_online,
+              u.card_color, u.badges, u.show_badges, u.hidden_badge_ids, u.role, u.status, u.is_online,
               u.tutorial_completed, u.created_at, u.last_seen_at,
               up.interests
        FROM users u
@@ -54,7 +54,7 @@ export class UserService {
     const placeholders = userIds.map(() => '?').join(',');
     const [rows] = await this.db.query(
       `SELECT id, username, display_name, avatar_url, banner_url, bio, 
-              card_color, badges, show_badges, role, status, is_online, created_at, last_seen_at
+              card_color, badges, show_badges, hidden_badge_ids, role, status, is_online, created_at, last_seen_at
        FROM users WHERE id IN (${placeholders})`,
       userIds
     );
@@ -88,7 +88,7 @@ export class UserService {
   async search(query: string, limit: number = 20): Promise<User[]> {
     const [rows] = await this.db.query(
       `SELECT id, username, display_name, avatar_url, banner_url, card_color, 
-              badges, show_badges, role, status, is_online
+              badges, show_badges, hidden_badge_ids, role, status, is_online
        FROM users 
        WHERE username LIKE ? OR display_name LIKE ?
        LIMIT ?`,
@@ -137,6 +137,7 @@ export class UserService {
     bio?: string;
     cardColor?: string;
     showBadges?: boolean;
+    hiddenBadgeIds?: string[];
     tutorialCompleted?: boolean;
   }): Promise<void> {
     const updates: string[] = [];
@@ -165,6 +166,10 @@ export class UserService {
     if (data.showBadges !== undefined) {
       updates.push('show_badges = ?');
       params.push(data.showBadges ? 1 : 0);
+    }
+    if (data.hiddenBadgeIds !== undefined) {
+      updates.push('hidden_badge_ids = ?');
+      params.push(JSON.stringify(data.hiddenBadgeIds));
     }
     if (data.tutorialCompleted !== undefined) {
       updates.push('tutorial_completed = ?');
@@ -441,6 +446,11 @@ export class UserService {
       cardColor: row.card_color,
       badges,
       showBadges: row.show_badges !== undefined ? Boolean(row.show_badges) : true,
+      hiddenBadgeIds: (() => {
+        if (!row.hidden_badge_ids) return [];
+        if (Array.isArray(row.hidden_badge_ids)) return row.hidden_badge_ids;
+        try { return JSON.parse(row.hidden_badge_ids); } catch { return []; }
+      })(),
       tutorialCompleted: Boolean(row.tutorial_completed),
       role: row.role || 'user',
       status: row.status,

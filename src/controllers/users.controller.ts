@@ -95,7 +95,7 @@ export class UserController {
         return res.status(403).json({ error: 'Non autorisé' });
       }
 
-      const { displayName, avatarUrl, bannerUrl, bio, cardColor, showBadges, tutorialCompleted } = req.body;
+      const { displayName, avatarUrl, bannerUrl, bio, cardColor, showBadges, hiddenBadgeIds, tutorialCompleted } = req.body;
       await userService.updateProfile(userId, { 
         displayName, 
         avatarUrl, 
@@ -103,6 +103,7 @@ export class UserController {
         bio, 
         cardColor, 
         showBadges,
+        hiddenBadgeIds,
         tutorialCompleted,
       });
 

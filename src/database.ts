@@ -207,6 +207,7 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
     { column: 'badges', sql: `ALTER TABLE users ADD COLUMN badges JSON DEFAULT NULL AFTER show_badges` },
     { column: 'role', sql: `ALTER TABLE users ADD COLUMN role ENUM('user', 'moderator', 'admin') DEFAULT 'user' AFTER show_badges` },
     { column: 'tutorial_completed', sql: `ALTER TABLE users ADD COLUMN tutorial_completed BOOLEAN DEFAULT FALSE AFTER email_verified` },
+    { column: 'hidden_badge_ids', sql: `ALTER TABLE users ADD COLUMN hidden_badge_ids JSON DEFAULT NULL AFTER badges` },
   ];
 
   for (const alt of alterations) {

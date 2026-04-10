@@ -66,6 +66,7 @@ usersRouter.patch('/:userId',
   body('bio').optional().isLength({ max: 500 }),
   body('cardColor').optional().isString().isLength({ max: 7 }),
   body('showBadges').optional().isBoolean(),
+  body('hiddenBadgeIds').optional().isArray(),
   validateRequest,
   userController.updateProfile.bind(userController)
 );
