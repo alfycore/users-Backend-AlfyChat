@@ -42,6 +42,9 @@ export interface UserPreferences {
   quietEnd?: string;
   vacationStart?: string;
   vacationEnd?: string;
+  // Layout / appearance
+  layoutPrefs?: Record<string, unknown>;
+  wallpaper?: string | null;
 }
 
 export interface Session {

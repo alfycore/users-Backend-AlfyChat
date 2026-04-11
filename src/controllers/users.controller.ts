@@ -204,8 +204,8 @@ export class UserController {
         return res.status(403).json({ error: 'Non autorisé' });
       }
 
-      const { currentPassword, newPassword } = req.body;
-      const result = await userService.changePassword(userId, currentPassword, newPassword);
+      const { currentPassword, newPassword, encryptedPrivateKey, keySalt } = req.body;
+      const result = await userService.changePassword(userId, currentPassword, newPassword, encryptedPrivateKey, keySalt);
 
       if (!result.success) {
         return res.status(400).json({ error: result.error });

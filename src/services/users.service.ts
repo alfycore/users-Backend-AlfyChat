@@ -255,9 +255,11 @@ export class UserService {
       quietEnd: 'quiet_end',
       vacationStart: 'vacation_start',
       vacationEnd: 'vacation_end',
+      layoutPrefs: 'layout_prefs',
+      wallpaper: 'wallpaper',
     };
 
-    const jsonFields = new Set(['interests', 'notifKeywords']);
+    const jsonFields = new Set(['interests', 'notifKeywords', 'layoutPrefs']);
     const updates: string[] = [];
     const params: any[] = [];
 
@@ -331,7 +333,9 @@ export class UserService {
   async changePassword(
     userId: string,
     currentPassword: string,
-    newPassword: string
+    newPassword: string,
+    encryptedPrivateKey?: string,
+    keySalt?: string
   ): Promise<{ success: boolean; error?: string }> {
     const [rows] = await this.db.query(
       'SELECT password_hash FROM users WHERE id = ?',
@@ -349,10 +353,19 @@ export class UserService {
     }
 
     const newHash = await bcrypt.hash(newPassword, 12);
-    await this.db.execute(
-      'UPDATE users SET password_hash = ? WHERE id = ?',
-      [newHash, userId]
-    );
+
+    // Update password hash + re-encrypted E2EE key if provided
+    if (encryptedPrivateKey && keySalt) {
+      await this.db.execute(
+        'UPDATE users SET password_hash = ?, encrypted_private_key = ?, key_salt = ? WHERE id = ?',
+        [newHash, encryptedPrivateKey, keySalt, userId]
+      );
+    } else {
+      await this.db.execute(
+        'UPDATE users SET password_hash = ? WHERE id = ?',
+        [newHash, userId]
+      );
+    }
 
     return { success: true };
   }
@@ -545,6 +558,8 @@ export class UserService {
       quietEnd: row.quiet_end || undefined,
       vacationStart: formatDate(row.vacation_start),
       vacationEnd: formatDate(row.vacation_end),
+      layoutPrefs: parseJsonField(row.layout_prefs),
+      wallpaper: row.wallpaper ?? null,
     };
   }
 }

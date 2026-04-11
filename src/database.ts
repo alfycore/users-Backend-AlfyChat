@@ -241,6 +241,8 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
     `ALTER TABLE user_preferences ADD COLUMN quiet_end TEXT NULL`,
     `ALTER TABLE user_preferences ADD COLUMN vacation_start DATE NULL`,
     `ALTER TABLE user_preferences ADD COLUMN vacation_end DATE NULL`,
+    `ALTER TABLE user_preferences ADD COLUMN layout_prefs JSON NULL`,
+    `ALTER TABLE user_preferences ADD COLUMN wallpaper TEXT NULL`,
   ];
   for (const sql of prefsAlterations) {
     try {

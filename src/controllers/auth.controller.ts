@@ -319,6 +319,20 @@ export class AuthController {
     }
   }
 
+  // Récupérer ses propres clés E2EE
+  async getKeys(req: AuthRequest, res: Response) {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ error: 'Non authentifié' });
+      }
+      const keys = await authService.getUserE2EEKeys(req.userId);
+      res.json(keys);
+    } catch (error) {
+      logger.error('Erreur récupération clés E2EE:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
+
   // Sauvegarder les clés E2EE (pour les utilisateurs sans clé)
   async saveKeys(req: AuthRequest, res: Response) {
     try {

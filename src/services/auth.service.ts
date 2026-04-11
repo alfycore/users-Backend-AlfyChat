@@ -509,6 +509,21 @@ export class AuthService {
     return sent ? { success: true } : { success: false, error: 'Impossible d\'envoyer l\'email.' };
   }
 
+  // Récupérer les clés E2EE de l'utilisateur courant
+  async getUserE2EEKeys(userId: string): Promise<{ keySalt: string | null; encryptedPrivateKey: string | null; publicKey: string | null }> {
+    const [rows] = await this.db.query(
+      'SELECT key_salt, encrypted_private_key, public_key FROM users WHERE id = ?',
+      [userId]
+    );
+    const users = rows as any[];
+    if (users.length === 0) return { keySalt: null, encryptedPrivateKey: null, publicKey: null };
+    return {
+      keySalt: users[0].key_salt || null,
+      encryptedPrivateKey: users[0].encrypted_private_key || null,
+      publicKey: users[0].public_key || null,
+    };
+  }
+
   // Sauvegarder les clés E2EE pour un utilisateur existant
   async saveUserKeys(userId: string, publicKey: string, encryptedPrivateKey: string, keySalt: string): Promise<{ success: boolean; error?: string }> {
     await this.db.execute(

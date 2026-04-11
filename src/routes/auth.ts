@@ -119,6 +119,12 @@ authRouter.post('/2fa/disable',
   authController.disable2FA.bind(authController)
 );
 
+// Récupérer ses propres clés E2EE
+authRouter.get('/keys',
+  authMiddleware,
+  authController.getKeys.bind(authController)
+);
+
 // Sauvegarder les clés E2EE (utilisateurs existants sans clé)
 authRouter.patch('/keys',
   authMiddleware,
