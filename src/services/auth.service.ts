@@ -532,6 +532,59 @@ export class AuthService {
     );
     return { success: true };
   }
+
+  // Demander une réinitialisation de mot de passe
+  async requestPasswordReset(email: string): Promise<{ success: boolean }> {
+    // Toujours retourner succès pour éviter l'énumération des emails
+    try {
+      const [rows] = await this.db.query(
+        'SELECT id, username FROM users WHERE email = ?',
+        [email]
+      );
+      const users = rows as any[];
+      if (users.length === 0) return { success: true };
+
+      const user = users[0];
+      const token = crypto.randomBytes(48).toString('hex');
+      // Stocker dans Redis avec TTL de 1h
+      await this.redis.set(`pwreset:${token}`, user.id, 3600);
+      // Envoyer l'email (best-effort)
+      await emailService.sendPasswordResetEmail(email, user.username, token);
+    } catch (err) {
+      // Ne pas exposer l'erreur
+    }
+    return { success: true };
+  }
+
+  // Réinitialiser le mot de passe avec un token
+  async resetPassword(token: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+    const userId = await this.redis.get(`pwreset:${token}`);
+    if (!userId) {
+      return { success: false, error: 'Lien invalide ou expiré.' };
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+
+    // Mettre à jour le mot de passe et effacer les clés E2EE
+    // (elles seront régénérées avec le nouveau mot de passe à la prochaine connexion)
+    await this.db.execute(
+      `UPDATE users SET
+         password_hash = ?,
+         encrypted_private_key = NULL,
+         key_salt = NULL,
+         public_key = NULL
+       WHERE id = ?`,
+      [passwordHash, userId]
+    );
+
+    // Supprimer le token utilisé
+    await this.redis.del(`pwreset:${token}`);
+
+    // Révoquer toutes les sessions existantes par sécurité
+    await this.logoutAll(userId);
+
+    return { success: true };
+  }
 }
 
 export const authService = new AuthService();

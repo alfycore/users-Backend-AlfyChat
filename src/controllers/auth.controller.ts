@@ -429,6 +429,41 @@ export class AuthController {
     }
   }
 
+  // Demander une réinitialisation de mot de passe
+  async requestPasswordReset(req: Request, res: Response) {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ error: 'Email requis' });
+      // Toujours succès pour éviter l'énumération
+      await authService.requestPasswordReset(email);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('Erreur demande reset mot de passe:', error);
+      res.json({ success: true }); // Toujours succès
+    }
+  }
+
+  // Réinitialiser le mot de passe
+  async resetPassword(req: Request, res: Response) {
+    try {
+      const { token, password } = req.body;
+      if (!token || !password) {
+        return res.status(400).json({ error: 'Token et mot de passe requis' });
+      }
+      if (password.length < 8) {
+        return res.status(400).json({ error: 'Le mot de passe doit comporter au moins 8 caractères' });
+      }
+      const result = await authService.resetPassword(token, password);
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('Erreur reset mot de passe:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
+
   // Lister les sessions actives
   async getSessions(req: AuthRequest, res: Response) {
     try {

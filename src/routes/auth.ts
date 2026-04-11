@@ -89,6 +89,25 @@ authRouter.post('/resend-verification-email',
 );
 
 // ==========================================
+// RÉINITIALISATION DE MOT DE PASSE
+// ==========================================
+
+// Demander un lien de réinitialisation
+authRouter.post('/forgot-password',
+  body('email').isEmail().normalizeEmail(),
+  validateRequest,
+  authController.requestPasswordReset.bind(authController)
+);
+
+// Appliquer le nouveau mot de passe
+authRouter.post('/reset-password',
+  body('token').isString().isLength({ min: 1 }),
+  body('password').isString().isLength({ min: 8 }),
+  validateRequest,
+  authController.resetPassword.bind(authController)
+);
+
+// ==========================================
 // 2FA (TOTP)
 // ==========================================
 // Statut 2FA
