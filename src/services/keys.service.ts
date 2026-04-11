@@ -175,6 +175,20 @@ export class SignalKeysService {
   }
 
   /**
+   * Retourne l'état du bundle Signal : existence + présence de la clé ECDH P-256.
+   * Évite deux requêtes séparées dans le contrôleur de statut.
+   */
+  async getBundleInfo(userId: string): Promise<{ hasBundle: boolean; hasEcdhKey: boolean }> {
+    const [rows] = await this.db.query(
+      `SELECT ecdh_key FROM signal_key_bundles WHERE user_id = ? LIMIT 1`,
+      [userId]
+    );
+    const row = (rows as any[])[0];
+    if (!row) return { hasBundle: false, hasEcdhKey: false };
+    return { hasBundle: true, hasEcdhKey: !!row.ecdh_key };
+  }
+
+  /**
    * Met à jour uniquement la clé ECDH P-256 du bundle existant.
    */
   async updateECDHKey(userId: string, ecdhKey: string): Promise<void> {

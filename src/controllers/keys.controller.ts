@@ -43,11 +43,11 @@ export class SignalKeysController {
   async getStatus(req: AuthRequest, res: Response) {
     try {
       const userId = req.userId!;
-      const [count, hasBundle] = await Promise.all([
+      const [count, bundleInfo] = await Promise.all([
         signalKeysService.getPrekeyCount(userId),
-        signalKeysService.hasBundle(userId),
+        signalKeysService.getBundleInfo(userId),
       ]);
-      res.json({ hasBundle, prekeyCount: count });
+      res.json({ hasBundle: bundleInfo.hasBundle, hasEcdhKey: bundleInfo.hasEcdhKey, prekeyCount: count });
     } catch (error) {
       res.status(500).json({ error: 'Erreur serveur' });
     }
