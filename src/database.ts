@@ -403,4 +403,60 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
   } catch (e: any) {
     if (e?.errno !== 1060) console.log('[DB] changelogs.banner_url already exists');
   }
+
+  // ==========================================
+  // NOUVELLES FEATURES — PRIVACY & CUSTOMISATION
+  // ==========================================
+
+  // Profile card: image personnalisée affichée sur le profil
+  // Music presence: JSON { title, artist, coverUrl, platform, startedAt }
+  const newUserCols = [
+    `ALTER TABLE users ADD COLUMN profile_card_url TEXT NULL`,
+    `ALTER TABLE users ADD COLUMN music_presence JSON NULL`,
+  ];
+  for (const sql of newUserCols) {
+    try { await db.execute(sql); } catch (e: any) {
+      if (e?.errno !== 1060) console.log('User new cols migration warning:', e?.message);
+    }
+  }
+
+  // activity_visibility_exceptions: masquer le statut en ligne à certains users
+  await db.execute(
+    `CREATE TABLE IF NOT EXISTS activity_visibility_exceptions (
+      user_id VARCHAR(36) NOT NULL,
+      hidden_from_user_id VARCHAR(36) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, hidden_from_user_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (hidden_from_user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  // user_favorites: emojis/stickers/gifs favoris avec ordre personnalisable
+  await db.execute(
+    `CREATE TABLE IF NOT EXISTS user_favorites (
+      id VARCHAR(36) PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      type ENUM('emoji', 'sticker', 'gif') NOT NULL,
+      value VARCHAR(500) NOT NULL,
+      position INT DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_user_fav (user_id, type, value),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_user_type (user_id, type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  // pinned_conversations: DMs épinglés en haut de la liste
+  await db.execute(
+    `CREATE TABLE IF NOT EXISTS pinned_conversations (
+      user_id VARCHAR(36) NOT NULL,
+      conversation_id VARCHAR(100) NOT NULL,
+      pin_order INT DEFAULT 0,
+      pinned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, conversation_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_user_pinned (user_id, pin_order)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
 }

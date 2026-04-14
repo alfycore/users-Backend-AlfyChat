@@ -36,10 +36,27 @@ export class UserController {
   async getUser(req: Request, res: Response) {
     try {
       const { userId } = req.params;
+      // L'ID du viewer peut venir de x-user-id (gateway) ou du query param
+      const viewerId = (req as any).userId || (req.headers['x-user-id'] as string) || (req.query.viewerId as string);
+
       const user = await userService.findById(userId);
 
       if (!user) {
         return res.status(404).json({ error: 'Utilisateur non trouvé' });
+      }
+
+      // Vérifier si le viewer est bloqué par cet utilisateur → 404 anonyme
+      if (viewerId && viewerId !== userId) {
+        const blocked = await userService.isBlockedBy(viewerId, userId);
+        if (blocked) {
+          return res.status(404).json({ error: 'Utilisateur non trouvé' });
+        }
+
+        // Masquer le statut en ligne si l'utilisateur a caché son activité au viewer
+        const activityHidden = await userService.isActivityHiddenFrom(userId, viewerId);
+        if (activityHidden) {
+          return res.json({ ...user, status: 'offline', isOnline: false });
+        }
       }
 
       res.json(user);

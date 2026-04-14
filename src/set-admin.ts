@@ -4,11 +4,11 @@ import mysql from 'mysql2/promise';
   const username = process.argv[2] || 'wiltark';
 
   const pool = mysql.createPool({
-    host: process.env.DB_HOST || '51.254.243.250',
-    port: Number(process.env.DB_PORT) || 3940,
+    host: process.env.DB_HOST || 'localhost',
+    port: Number(process.env.DB_PORT) || 3306,
     user: process.env.DB_USER || 'alfychat',
-    password: process.env.DB_PASSWORD || 'CzeZiC0p2cLM82LhHVby',
-    database: process.env.DB_NAME || 'alfyv2',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'alfychat',
   });
 
   // Vérifier que l'utilisateur existe

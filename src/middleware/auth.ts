@@ -9,12 +9,24 @@ import { getRedisClient } from '../redis';
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
 
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
+
 export async function authMiddleware(
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
   try {
+    // Bypass interne : requêtes provenant du gateway (x-internal-secret + x-user-id)
+    const internalSecret = req.headers['x-internal-secret'] as string | undefined;
+    if (INTERNAL_SECRET && internalSecret && internalSecret === INTERNAL_SECRET) {
+      const xUserId = req.headers['x-user-id'] as string | undefined;
+      if (xUserId) {
+        (req as any).userId = xUserId;
+        return next();
+      }
+    }
+
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {

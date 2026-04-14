@@ -160,10 +160,7 @@ export class AuthService {
       };
     }
 
-    // Mettre à jour le statut
-    await userService.updateStatus(dbUser.id, 'online');
-
-    // Générer les tokens
+    // Générer les tokens (le statut de présence est géré par le gateway au moment de la connexion socket)
     const tokens = await this.generateTokens(dbUser.id, ipAddress, userAgent);
 
     const user: User = {
@@ -172,7 +169,7 @@ export class AuthService {
       username: dbUser.username,
       displayName: dbUser.display_name,
       avatarUrl: dbUser.avatar_url,
-      status: 'online',
+      status: dbUser.status || 'offline',
       isOnline: true,
     };
 
@@ -209,7 +206,6 @@ export class AuthService {
     }
 
     const dbUser = users[0];
-    await userService.updateStatus(dbUser.id, 'online');
     const tokens = await this.generateTokens(dbUser.id, ipAddress, userAgent);
 
     const user: User = {
@@ -218,7 +214,7 @@ export class AuthService {
       username: dbUser.username,
       displayName: dbUser.display_name,
       avatarUrl: dbUser.avatar_url,
-      status: 'online',
+      status: dbUser.status || 'offline',
       isOnline: true,
     };
 

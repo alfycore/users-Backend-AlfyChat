@@ -562,6 +562,160 @@ export class UserService {
       wallpaper: row.wallpaper ?? null,
     };
   }
+
+  // ============================================================
+  // NOUVELLES FEATURES — PRIVACY & CUSTOMISATION
+  // ============================================================
+
+  // Vérifier si viewerId est dans la liste bloquée de targetId
+  // (targetId a bloqué viewerId → cacher le profil de targetId au viewerId)
+  async isBlockedBy(viewerId: string, targetId: string): Promise<boolean> {
+    // La table blocked_users est dans le service friends mais répliquée en Redis
+    // Pour éviter une requête cross-service, on fait une query directe sur la DB partagée
+    try {
+      const [rows] = await this.db.query(
+        `SELECT 1 FROM blocked_users WHERE user_id = ? AND blocked_user_id = ? LIMIT 1`,
+        [targetId, viewerId]
+      );
+      return (rows as any[]).length > 0;
+    } catch {
+      return false; // table absente dans ce service DB → ne pas bloquer
+    }
+  }
+
+  // Mettre à jour la présence musicale
+  async updateMusicPresence(userId: string, data: {
+    title?: string;
+    artist?: string;
+    coverUrl?: string;
+    platform?: string;
+    startedAt?: string;
+  } | null): Promise<void> {
+    await this.db.execute(
+      'UPDATE users SET music_presence = ? WHERE id = ?',
+      [data !== null ? JSON.stringify(data) : null, userId]
+    );
+    await this.invalidateCache(userId);
+  }
+
+  // Mettre à jour la profile card
+  async updateProfileCard(userId: string, profileCardUrl: string | null): Promise<void> {
+    await this.db.execute(
+      'UPDATE users SET profile_card_url = ? WHERE id = ?',
+      [profileCardUrl, userId]
+    );
+    await this.invalidateCache(userId);
+  }
+
+  // ---- Favoris (emojis/stickers/gifs) ----
+
+  async getFavorites(userId: string, type?: 'emoji' | 'sticker' | 'gif'): Promise<any[]> {
+    if (type) {
+      const [rows] = await this.db.query(
+        'SELECT id, type, value, position FROM user_favorites WHERE user_id = ? AND type = ? ORDER BY position ASC',
+        [userId, type]
+      );
+      return rows as any[];
+    }
+    const [rows] = await this.db.query(
+      'SELECT id, type, value, position FROM user_favorites WHERE user_id = ? ORDER BY type ASC, position ASC',
+      [userId]
+    );
+    return rows as any[];
+  }
+
+  async addFavorite(userId: string, type: 'emoji' | 'sticker' | 'gif', value: string): Promise<any> {
+    const { v4: uuidv4 } = await import('uuid');
+    const id = uuidv4();
+    // position = max existant + 1
+    const [posRows] = await this.db.query(
+      'SELECT COALESCE(MAX(position), -1) as maxPos FROM user_favorites WHERE user_id = ? AND type = ?',
+      [userId, type]
+    );
+    const position = ((posRows as any[])[0]?.maxPos ?? -1) + 1;
+    await this.db.execute(
+      'INSERT IGNORE INTO user_favorites (id, user_id, type, value, position) VALUES (?, ?, ?, ?, ?)',
+      [id, userId, type, value, position]
+    );
+    return { id, type, value, position };
+  }
+
+  async removeFavorite(userId: string, id: string): Promise<void> {
+    await this.db.execute(
+      'DELETE FROM user_favorites WHERE id = ? AND user_id = ?',
+      [id, userId]
+    );
+  }
+
+  async reorderFavorites(userId: string, orderedIds: string[]): Promise<void> {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await this.db.execute(
+        'UPDATE user_favorites SET position = ? WHERE id = ? AND user_id = ?',
+        [i, orderedIds[i], userId]
+      );
+    }
+  }
+
+  // ---- Visibilité de l'activité ----
+
+  async getActivityHiddenFrom(userId: string): Promise<string[]> {
+    const [rows] = await this.db.query(
+      'SELECT hidden_from_user_id FROM activity_visibility_exceptions WHERE user_id = ?',
+      [userId]
+    );
+    return (rows as any[]).map(r => r.hidden_from_user_id);
+  }
+
+  async hideActivityFrom(userId: string, targetUserId: string): Promise<void> {
+    await this.db.execute(
+      'INSERT IGNORE INTO activity_visibility_exceptions (user_id, hidden_from_user_id) VALUES (?, ?)',
+      [userId, targetUserId]
+    );
+  }
+
+  async showActivityTo(userId: string, targetUserId: string): Promise<void> {
+    await this.db.execute(
+      'DELETE FROM activity_visibility_exceptions WHERE user_id = ? AND hidden_from_user_id = ?',
+      [userId, targetUserId]
+    );
+  }
+
+  async isActivityHiddenFrom(userId: string, viewerId: string): Promise<boolean> {
+    const [rows] = await this.db.query(
+      'SELECT 1 FROM activity_visibility_exceptions WHERE user_id = ? AND hidden_from_user_id = ? LIMIT 1',
+      [userId, viewerId]
+    );
+    return (rows as any[]).length > 0;
+  }
+
+  // ---- DMs épinglés ----
+
+  async getPinnedConversations(userId: string): Promise<Array<{ conversationId: string; pinOrder: number }>> {
+    const [rows] = await this.db.query(
+      'SELECT conversation_id, pin_order FROM pinned_conversations WHERE user_id = ? ORDER BY pin_order ASC',
+      [userId]
+    );
+    return (rows as any[]).map(r => ({ conversationId: r.conversation_id, pinOrder: r.pin_order }));
+  }
+
+  async pinConversation(userId: string, conversationId: string): Promise<void> {
+    const [posRows] = await this.db.query(
+      'SELECT COALESCE(MAX(pin_order), -1) as maxOrd FROM pinned_conversations WHERE user_id = ?',
+      [userId]
+    );
+    const pinOrder = ((posRows as any[])[0]?.maxOrd ?? -1) + 1;
+    await this.db.execute(
+      'INSERT IGNORE INTO pinned_conversations (user_id, conversation_id, pin_order) VALUES (?, ?, ?)',
+      [userId, conversationId, pinOrder]
+    );
+  }
+
+  async unpinConversation(userId: string, conversationId: string): Promise<void> {
+    await this.db.execute(
+      'DELETE FROM pinned_conversations WHERE user_id = ? AND conversation_id = ?',
+      [userId, conversationId]
+    );
+  }
 }
 
 export const userService = new UserService();
