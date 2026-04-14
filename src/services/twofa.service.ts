@@ -151,12 +151,17 @@ export class TwoFactorService {
     return userId;
   }
 
-  // Générer des codes de secours
+  // Générer des codes de secours (RNG cryptographique — jamais Math.random pour un secret)
   private generateBackupCodes(count = 8): string[] {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    return Array.from({ length: count }, () =>
-      Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
-    );
+    const codes: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const bytes = crypto.randomBytes(8);
+      let code = '';
+      for (let j = 0; j < 8; j++) code += chars[bytes[j] % chars.length];
+      codes.push(code);
+    }
+    return codes;
   }
 }
 
