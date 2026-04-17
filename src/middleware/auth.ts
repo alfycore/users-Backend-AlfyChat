@@ -27,6 +27,15 @@ export async function authMiddleware(
       }
     }
 
+    // Fallback réseau interne : x-user-id seul (quand INTERNAL_SECRET n'est pas configuré)
+    if (!INTERNAL_SECRET) {
+      const xUserId = req.headers['x-user-id'] as string | undefined;
+      if (xUserId) {
+        (req as any).userId = xUserId;
+        return next();
+      }
+    }
+
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
