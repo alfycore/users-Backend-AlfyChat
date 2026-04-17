@@ -11,7 +11,7 @@ export interface User {
   displayName: string;
   avatarUrl?: string;
   bio?: string;
-  role?: 'user' | 'moderator' | 'admin';
+  role?: 'user' | 'moderator' | 'admin' | 'support_l1' | 'support_l2' | 'technician';
   status: UserStatus;
   customStatus?: string;
   isOnline: boolean;

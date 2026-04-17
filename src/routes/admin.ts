@@ -94,7 +94,7 @@ adminRouter.get('/users/search',
 
 // Mettre à jour le rôle d'un utilisateur
 adminRouter.patch('/users/:userId/role',
-  body('role').isIn(['user', 'moderator', 'admin']),
+  body('role').isIn(['user', 'moderator', 'admin', 'support_l1', 'support_l2', 'technician']),
   validateRequest,
   adminController.updateUserRole.bind(adminController)
 );

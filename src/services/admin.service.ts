@@ -35,7 +35,7 @@ export interface UserAdminData {
   username: string;
   displayName: string;
   email: string;
-  role: 'user' | 'moderator' | 'admin';
+  role: 'user' | 'moderator' | 'admin' | 'support_l1' | 'support_l2' | 'technician';
   badges: any[];
   status: string;
   isOnline: boolean;
@@ -218,7 +218,7 @@ export class AdminService {
     return (rows as any[]).map(row => this.formatUserAdmin(row));
   }
 
-  async updateUserRole(userId: string, role: 'user' | 'moderator' | 'admin'): Promise<void> {
+  async updateUserRole(userId: string, role: 'user' | 'moderator' | 'admin' | 'support_l1' | 'support_l2' | 'technician'): Promise<void> {
     await this.db.execute(
       'UPDATE users SET role = ? WHERE id = ?',
       [role, userId]

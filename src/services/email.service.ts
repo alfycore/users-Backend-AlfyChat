@@ -158,6 +158,40 @@ export class EmailService {
     return this.send(to, `Réinitialisation de mot de passe — ${APP_NAME}`, html);
   }
 
+  async sendTicketConfirmation(
+    to: string,
+    ticketNumber: number,
+    ticketSubject: string,
+    category: string,
+  ): Promise<boolean> {
+    const supportUrl = `${FRONTEND_URL}/support/mes-tickets`;
+    const html = baseTemplate(`
+      <h2 style="margin:0 0 8px;color:#ffffff;font-size:22px">Demande de support reçue</h2>
+      <p style="margin:0 0 24px;color:#aaa;font-size:15px">
+        Votre demande a bien été enregistrée. Notre équipe vous répondra sous <strong style="color:#fff">24 heures ouvrées</strong> (lun–ven, 9h–18h).
+      </p>
+      <div style="background:#111;border:1px solid #2a2a2a;border-radius:10px;padding:20px 24px;margin:0 0 28px">
+        <p style="margin:0 0 6px;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.5px">Numéro de ticket</p>
+        <p style="margin:0 0 16px;color:#5865F2;font-size:22px;font-weight:700;font-family:monospace">#${ticketNumber}</p>
+        <p style="margin:0 0 4px;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.5px">Sujet</p>
+        <p style="margin:0 0 16px;color:#fff;font-size:15px;font-weight:500">${ticketSubject}</p>
+        <p style="margin:0 0 4px;color:#888;font-size:12px;text-transform:uppercase;letter-spacing:0.5px">Catégorie</p>
+        <p style="margin:0;color:#aaa;font-size:14px">${category}</p>
+      </div>
+      <div style="text-align:center;margin:24px 0">
+        <a href="${supportUrl}"
+           style="display:inline-block;background:#5865F2;color:#fff;text-decoration:none;padding:12px 32px;border-radius:8px;font-size:15px;font-weight:600">
+          Suivre mes tickets
+        </a>
+      </div>
+      <p style="margin:24px 0 0;color:#555;font-size:13px">
+        Conservez ce numéro de ticket pour toute référence future. Vous serez notifié par email de chaque réponse.
+      </p>
+    `);
+
+    return this.send(to, `Ticket #${ticketNumber} reçu — ${APP_NAME} Support`, html);
+  }
+
   private async send(to: string, subject: string, html: string): Promise<boolean> {
     try {
       const transporter = createTransport();

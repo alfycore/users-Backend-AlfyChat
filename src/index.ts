@@ -13,6 +13,10 @@ import { authRouter } from './routes/auth';
 import { rgpdRouter } from './routes/rgpd';
 import { adminRouter } from './routes/admin';
 import { keysRouter } from './routes/keys';
+import { helpdeskRouter } from './routes/helpdesk';
+import { publicHelpdeskRouter } from './routes/public-helpdesk';
+import { publicSupportRouter } from './routes/support-public';
+import { adminSupportRouter } from './routes/admin-support';
 import { startServiceRegistration, serviceMetricsMiddleware, collectServiceMetrics } from './utils/service-client';
 import { getDatabaseClient, runMigrations } from './database';
 import { getRedisClient } from './redis';
@@ -45,6 +49,10 @@ app.use('/auth', authRouter);
 app.use('/rgpd', rgpdRouter);
 app.use('/admin', adminRouter);
 app.use('/users/keys', keysRouter);
+app.use('/helpdesk/public', publicHelpdeskRouter);
+app.use('/helpdesk', helpdeskRouter);
+app.use('/users/support', publicSupportRouter);
+app.use('/admin/support', adminSupportRouter);
 
 // Health check
 app.get('/health', (req, res) => {
