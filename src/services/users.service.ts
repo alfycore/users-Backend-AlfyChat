@@ -187,11 +187,11 @@ export class UserService {
   }
 
   // Mettre à jour le statut
-  async updateStatus(userId: string, status: UserStatus, customStatus?: string): Promise<void> {
+  async updateStatus(userId: string, status: UserStatus, customStatus?: string | null): Promise<void> {
     if (customStatus !== undefined) {
       await this.db.execute(
         'UPDATE users SET status = ?, is_online = ?, custom_status = ? WHERE id = ?',
-        [status, status !== 'offline', customStatus.slice(0, 100), userId]
+        [status, status !== 'offline', customStatus ? customStatus.slice(0, 100) : null, userId]
       );
     } else {
       await this.db.execute(
