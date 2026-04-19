@@ -7,12 +7,6 @@ import jwt from 'jsonwebtoken';
 import { timingSafeEqual } from 'crypto';
 import { getRedisClient } from '../redis';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
-
-const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
-if (!INTERNAL_SECRET) throw new Error('INTERNAL_SECRET environment variable is required — refusing to start without it');
-
 function safeCompare(a: string, b: string): boolean {
   if (!a || !b) return false;
   const bufA = Buffer.from(a);
@@ -26,6 +20,12 @@ export async function authMiddleware(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  const JWT_SECRET = process.env.JWT_SECRET;
+  const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
+  if (!JWT_SECRET || !INTERNAL_SECRET) {
+    res.status(500).json({ error: 'Server misconfiguration: missing secrets' });
+    return;
+  }
   try {
     // Bypass interne : requêtes provenant du gateway (x-internal-secret + x-user-id)
     const internalSecret = req.headers['x-internal-secret'] as string | undefined;
