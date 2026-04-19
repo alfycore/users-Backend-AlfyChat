@@ -1,9 +1,8 @@
-FROM node:20-alpine
+FROM oven/bun:1-alpine
 
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm install
+COPY package.json bun.lockb* ./
+RUN bun install
 COPY . .
-RUN npm run build
 EXPOSE 3001
-CMD ["node", "dist/index.js"]
+CMD ["bun", "src/index.ts"]
