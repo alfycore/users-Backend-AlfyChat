@@ -9,7 +9,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { usersRouter } from './routes/users';
-import { authRouter } from './routes/auth';
+
 import { rgpdRouter } from './routes/rgpd';
 import { adminRouter } from './routes/admin';
 import { keysRouter } from './routes/keys';
@@ -21,7 +21,7 @@ import { startServiceRegistration, serviceMetricsMiddleware, collectServiceMetri
 import { getDatabaseClient, runMigrations } from './database';
 import { getRedisClient } from './redis';
 import { logger } from './utils/logger';
-
+import { authRouter } from './routes/auth';
 const app = express();
 
 // Middleware
