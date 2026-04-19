@@ -3,11 +3,11 @@
 // Authentification, préférences, RGPD
 // ==========================================
 
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
 import { usersRouter } from './routes/users';
 import { authRouter } from './routes/auth';
 import { rgpdRouter } from './routes/rgpd';
@@ -21,8 +21,6 @@ import { startServiceRegistration, serviceMetricsMiddleware, collectServiceMetri
 import { getDatabaseClient, runMigrations } from './database';
 import { getRedisClient } from './redis';
 import { logger } from './utils/logger';
-
-dotenv.config();
 
 const app = express();
 
