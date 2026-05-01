@@ -4,6 +4,8 @@
 // ==========================================
 
 import 'dotenv/config';
+import { registerGlobalErrorHandlers } from './utils/error-reporter';
+registerGlobalErrorHandlers();
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
