@@ -3,7 +3,9 @@
 // Authentification, préférences, RGPD
 // ==========================================
 
-import 'dotenv/config';
+if (process.env.NODE_ENV !== 'production') {
+  await import('dotenv/config');
+}
 import { registerGlobalErrorHandlers } from './utils/error-reporter';
 registerGlobalErrorHandlers();
 import express from 'express';
