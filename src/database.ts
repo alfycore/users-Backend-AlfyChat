@@ -139,9 +139,6 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
   ];
 
-  for (const sql of migrations) {
-    await db.execute(sql);
-  }
 
   // Table pour badges personnalisés
   await db.execute(
