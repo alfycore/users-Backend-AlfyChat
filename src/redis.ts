@@ -18,6 +18,16 @@ export function getRedisClient(config?: RedisConfig) {
       host: config.host,
       port: config.port,
       password: config.password,
+      lazyConnect: true,
+      enableOfflineQueue: false,
+      maxRetriesPerRequest: 1,
+      retryStrategy: (times) => Math.min(times * 2000, 30000),
+    });
+    client.on('error', (err) => {
+      console.error(`[Redis] Erreur de connexion (${config.host}:${config.port}):`, err.message);
+    });
+    client.connect().catch((err) => {
+      console.error(`[Redis] Connexion initiale échouée:`, err.message);
     });
   }
 
