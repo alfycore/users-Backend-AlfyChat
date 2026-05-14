@@ -25,6 +25,7 @@ import { getRedisClient } from './redis';
 import { logger } from './utils/logger';
 import { authRouter } from './routes/auth';
 const app = express();
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(cors({
