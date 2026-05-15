@@ -20,7 +20,7 @@ import { publicHelpdeskRouter } from './routes/public-helpdesk';
 import { publicSupportRouter } from './routes/support-public';
 import { adminSupportRouter } from './routes/admin-support';
 import { startServiceRegistration, serviceMetricsMiddleware, collectServiceMetrics } from './utils/service-client';
-import { getDatabaseClient } from './database';
+import { getDatabaseClient, runMigrations } from './database';
 import { getRedisClient } from './redis';
 import { logger } from './utils/logger';
 import { authRouter } from './routes/auth';
@@ -83,6 +83,9 @@ async function start() {
       password: process.env.DB_PASSWORD || 'alfychat',
       database: process.env.DB_NAME || 'alfychat',
     });
+
+    // Migrations automatiques au démarrage
+    await runMigrations(db);
 
     // Connexion à Redis
     getRedisClient({
