@@ -142,9 +142,11 @@ export class UserController {
         return res.status(403).json({ error: 'Non autorisé' });
       }
 
-      const { status, customStatus } = req.body;
+      const { status, customStatus, text, emoji } = req.body;
+      const resolvedText: string | null | undefined = text ?? customStatus;
+      const resolvedEmoji: string | null | undefined = emoji ?? null;
 
-      await userService.updateStatus(userId, status, customStatus);
+      await userService.updateStatus(userId, status, resolvedText, resolvedEmoji);
       res.json({ success: true });
     } catch (error) {
       logger.error('Erreur mise à jour statut:', error);

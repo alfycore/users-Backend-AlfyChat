@@ -24,6 +24,7 @@ import { getDatabaseClient } from './database';
 import { getRedisClient } from './redis';
 import { logger } from './utils/logger';
 import { authRouter } from './routes/auth';
+import { pushRouter } from './routes/push';
 const app = express();
 app.set('trust proxy', 1);
 
@@ -54,6 +55,7 @@ app.use('/helpdesk/public', publicHelpdeskRouter);
 app.use('/helpdesk', helpdeskRouter);
 app.use('/users/support', publicSupportRouter);
 app.use('/admin/support', adminSupportRouter);
+app.use('/push', pushRouter);
 
 // Health check
 app.get('/health', (req, res) => {

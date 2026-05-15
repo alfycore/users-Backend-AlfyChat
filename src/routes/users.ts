@@ -82,6 +82,8 @@ usersRouter.patch('/:userId/status',
   authMiddleware,
   body('status').isIn(['online', 'idle', 'dnd', 'invisible', 'offline']),
   body('customStatus').optional({ nullable: true }).isString().isLength({ max: 100 }),
+  body('text').optional({ nullable: true }).isString().isLength({ max: 100 }),
+  body('emoji').optional({ nullable: true }).isString().isLength({ max: 10 }),
   validateRequest,
   userController.updateStatus.bind(userController)
 );

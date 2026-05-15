@@ -361,17 +361,24 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
   }
 
   // ==========================================
-  // CUSTOM STATUS (ALTER pour les DBs existantes)
+  // CUSTOM STATUS + STATUS EMOJI (ALTER pour les DBs existantes)
   // ==========================================
   {
-    const sqls = [
-      `ALTER TABLE users ADD COLUMN custom_status VARCHAR(100) NULL DEFAULT NULL`,
+    const alterCols: Array<[string, string]> = [
+      ['custom_status', 'ALTER TABLE users ADD COLUMN custom_status VARCHAR(100) NULL DEFAULT NULL'],
+      ['status_emoji',  'ALTER TABLE users ADD COLUMN status_emoji VARCHAR(10) NULL DEFAULT NULL'],
     ];
-    for (const sql of sqls) {
-      try {
-        await db.execute(sql);
-      } catch (e: any) {
-        if (e?.errno !== 1060) console.log('custom_status migration warning:', e?.message);
+    for (const [colName, sql] of alterCols) {
+      const [existing] = await db.query(
+        'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME=?',
+        ['users', colName],
+      );
+      if (!(existing as any[]).length) {
+        try {
+          await db.execute(sql);
+        } catch (e: any) {
+          console.log(`${colName} migration warning:`, e?.message);
+        }
       }
     }
   }
@@ -441,6 +448,21 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
       UNIQUE KEY uq_user_fav (user_id, type, value),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       INDEX idx_user_type (user_id, type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  // Web Push subscriptions — pour les notifications quand le navigateur est fermé
+  await db.execute(
+    `CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id          VARCHAR(36)  PRIMARY KEY,
+      user_id     VARCHAR(36)  NOT NULL,
+      endpoint    TEXT         NOT NULL,
+      p256dh      TEXT         NOT NULL,
+      auth        TEXT         NOT NULL,
+      user_agent  TEXT         NULL,
+      created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      INDEX idx_user_push (user_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   );
 

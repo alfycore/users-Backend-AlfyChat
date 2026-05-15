@@ -28,7 +28,7 @@ export class UserService {
     const [rows] = await this.db.query(
       `SELECT u.id, u.username, u.email, u.display_name, u.avatar_url, u.banner_url, u.bio,
               u.card_color, u.badges, u.show_badges, u.hidden_badge_ids, u.role, u.status, u.is_online,
-              u.tutorial_completed, u.created_at, u.last_seen_at,
+              u.tutorial_completed, u.created_at, u.last_seen_at, u.custom_status, u.status_emoji,
               up.interests
        FROM users u
        LEFT JOIN user_preferences up ON up.user_id = u.id
@@ -53,8 +53,9 @@ export class UserService {
 
     const placeholders = userIds.map(() => '?').join(',');
     const [rows] = await this.db.query(
-      `SELECT id, username, display_name, avatar_url, banner_url, bio, 
-              card_color, badges, show_badges, hidden_badge_ids, role, status, is_online, created_at, last_seen_at
+      `SELECT id, username, display_name, avatar_url, banner_url, bio,
+              card_color, badges, show_badges, hidden_badge_ids, role, status, is_online,
+              created_at, last_seen_at, custom_status, status_emoji
        FROM users WHERE id IN (${placeholders})`,
       userIds
     );
@@ -187,16 +188,19 @@ export class UserService {
   }
 
   // Mettre à jour le statut
-  async updateStatus(userId: string, status: UserStatus, customStatus?: string | null): Promise<void> {
-    if (customStatus !== undefined) {
+  async updateStatus(userId: string, status: UserStatus, customStatus?: string | null, emoji?: string | null): Promise<void> {
+    // invisible → is_online = FALSE (l'utilisateur est techniquement connecté mais se cache)
+    const isOnline = status !== 'offline' && status !== 'invisible';
+    if (customStatus !== undefined || emoji !== undefined) {
       await this.db.execute(
-        'UPDATE users SET status = ?, is_online = ?, custom_status = ? WHERE id = ?',
-        [status, status !== 'offline', customStatus ? customStatus.slice(0, 100) : null, userId]
+        'UPDATE users SET status = ?, is_online = ?, custom_status = ?, status_emoji = ? WHERE id = ?',
+        [status, isOnline, customStatus !== undefined ? (customStatus?.slice(0, 100) ?? null) : null,
+         emoji !== undefined ? (emoji?.slice(0, 10) ?? null) : null, userId],
       );
     } else {
       await this.db.execute(
         'UPDATE users SET status = ?, is_online = ? WHERE id = ?',
-        [status, status !== 'offline', userId]
+        [status, isOnline, userId],
       );
     }
     await this.invalidateCache(userId);
@@ -513,6 +517,7 @@ export class UserService {
       role: row.role || 'user',
       status: row.status,
       customStatus: row.custom_status || null,
+      statusEmoji: row.status_emoji || null,
       isOnline: Boolean(row.is_online),
       createdAt: row.created_at,
       lastSeenAt: row.last_seen_at,

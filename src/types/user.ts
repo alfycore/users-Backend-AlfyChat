@@ -13,7 +13,8 @@ export interface User {
   bio?: string;
   role?: 'user' | 'moderator' | 'admin' | 'support_l1' | 'support_l2' | 'technician';
   status: UserStatus;
-  customStatus?: string;
+  customStatus?: string | null;
+  statusEmoji?: string | null;
   isOnline: boolean;
   createdAt?: Date;
   lastSeenAt?: Date;
