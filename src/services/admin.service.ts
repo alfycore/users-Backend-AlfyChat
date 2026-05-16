@@ -538,20 +538,39 @@ export class AdminService {
   }
 
   async createChangelog(data: {
-    version: string;
+    version?: string;
     title: string;
     content: string;
-    type: 'feature' | 'fix' | 'improvement' | 'security' | 'breaking';
+    type: 'feature' | 'fix' | 'improvement' | 'security' | 'breaking' | 'news';
     bannerUrl?: string | null;
     createdBy: string;
   }) {
     const id = uuidv4();
     await this.db.execute(
       `INSERT INTO changelogs (id, version, title, content, type, banner_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [id, data.version, data.title, data.content, data.type, data.bannerUrl ?? null, data.createdBy]
+      [id, data.version ?? '', data.title, data.content, data.type, data.bannerUrl ?? null, data.createdBy]
     );
     const [rows] = await this.db.query(`SELECT * FROM changelogs WHERE id = ?`, [id]);
     return (rows as any[])[0];
+  }
+
+  async updateChangelog(changelogId: string, data: {
+    version?: string;
+    title?: string;
+    content?: string;
+    type?: string;
+    bannerUrl?: string | null;
+  }) {
+    const parts: string[] = [];
+    const values: any[] = [];
+    if (data.version !== undefined) { parts.push('version = ?'); values.push(data.version); }
+    if (data.title !== undefined) { parts.push('title = ?'); values.push(data.title); }
+    if (data.content !== undefined) { parts.push('content = ?'); values.push(data.content); }
+    if (data.type !== undefined) { parts.push('type = ?'); values.push(data.type); }
+    if (data.bannerUrl !== undefined) { parts.push('banner_url = ?'); values.push(data.bannerUrl); }
+    if (!parts.length) return;
+    values.push(changelogId);
+    await this.db.execute(`UPDATE changelogs SET ${parts.join(', ')} WHERE id = ?`, values);
   }
 
   async deleteChangelog(changelogId: string) {

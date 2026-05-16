@@ -252,10 +252,10 @@ export class AdminController {
   async createChangelog(req: AuthRequest, res: Response) {
     try {
       const { version, title, content, type, bannerUrl } = req.body;
-      if (!version || !title || !content) {
-        return res.status(400).json({ error: 'version, title et content requis' });
+      if (!title || !content) {
+        return res.status(400).json({ error: 'title et content requis' });
       }
-      const validTypes = ['feature', 'fix', 'improvement', 'security', 'breaking'];
+      const validTypes = ['feature', 'fix', 'improvement', 'security', 'breaking', 'news'];
       const changelogType = validTypes.includes(type) ? type : 'feature';
       const changelog = await adminService.createChangelog({
         version,
@@ -269,6 +269,26 @@ export class AdminController {
       res.status(201).json(changelog);
     } catch (error) {
       logger.error('Erreur création changelog:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
+
+  async updateChangelog(req: AuthRequest, res: Response) {
+    try {
+      const { changelogId } = req.params;
+      const { version, title, content, type, bannerUrl } = req.body;
+      const validTypes = ['feature', 'fix', 'improvement', 'security', 'breaking', 'news'];
+      await adminService.updateChangelog(changelogId, {
+        version: version !== undefined ? (String(version).trim() || '') : undefined,
+        title: title?.trim(),
+        content: content?.trim(),
+        type: validTypes.includes(type) ? type : undefined,
+        bannerUrl: typeof bannerUrl === 'string' ? (bannerUrl.trim() || null) : bannerUrl === null ? null : undefined,
+      });
+      logger.info(`Changelog ${changelogId} mis à jour par ${req.userId}`);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('Erreur mise à jour changelog:', error);
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }

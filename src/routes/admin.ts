@@ -143,12 +143,23 @@ adminRouter.get('/changelogs',
 
 // Créer un changelog
 adminRouter.post('/changelogs',
-  body('version').isString().isLength({ min: 1, max: 50 }),
+  body('version').optional({ nullable: true }).isString().isLength({ max: 50 }),
   body('title').isString().isLength({ min: 1, max: 255 }),
   body('content').isString().isLength({ min: 1 }),
-  body('type').optional().isIn(['feature', 'fix', 'improvement', 'security', 'breaking']),
+  body('type').optional().isIn(['feature', 'fix', 'improvement', 'security', 'breaking', 'news']),
   validateRequest,
   adminController.createChangelog.bind(adminController)
+);
+
+// Modifier un changelog
+adminRouter.patch('/changelogs/:changelogId',
+  body('version').optional({ nullable: true }).isString().isLength({ max: 50 }),
+  body('title').optional().isString().isLength({ min: 1, max: 255 }),
+  body('content').optional().isString().isLength({ min: 1 }),
+  body('type').optional().isIn(['feature', 'fix', 'improvement', 'security', 'breaking', 'news']),
+  body('bannerUrl').optional({ nullable: true }),
+  validateRequest,
+  adminController.updateChangelog.bind(adminController)
 );
 
 // Supprimer un changelog
