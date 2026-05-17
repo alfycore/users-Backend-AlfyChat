@@ -22,13 +22,20 @@ export declare class UserService {
         bio?: string;
         cardColor?: string;
         showBadges?: boolean;
+        hiddenBadgeIds?: string[];
         tutorialCompleted?: boolean;
     }): Promise<void>;
-    updateStatus(userId: string, status: UserStatus): Promise<void>;
+    updateStatus(userId: string, status: UserStatus, customStatus?: string | null, emoji?: string | null): Promise<void>;
+    updateCustomStatus(userId: string, customStatus: string | null): Promise<void>;
     updateLastSeen(userId: string): Promise<void>;
     getPreferences(userId: string): Promise<UserPreferences | null>;
     updatePreferences(userId: string, data: Partial<UserPreferences>): Promise<void>;
-    changePassword(userId: string, currentPassword: string, newPassword: string): Promise<{
+    checkUsernameAvailable(username: string): Promise<boolean>;
+    changeUsername(userId: string, newUsername: string, password: string): Promise<{
+        success: boolean;
+        error?: string;
+    }>;
+    changePassword(userId: string, currentPassword: string, newPassword: string, encryptedPrivateKey?: string, keySalt?: string): Promise<{
         success: boolean;
         error?: string;
     }>;
@@ -40,6 +47,29 @@ export declare class UserService {
     private invalidateCache;
     private formatUser;
     private formatPreferences;
+    isBlockedBy(viewerId: string, targetId: string): Promise<boolean>;
+    updateMusicPresence(userId: string, data: {
+        title?: string;
+        artist?: string;
+        coverUrl?: string;
+        platform?: string;
+        startedAt?: string;
+    } | null): Promise<void>;
+    updateProfileCard(userId: string, profileCardUrl: string | null): Promise<void>;
+    getFavorites(userId: string, type?: 'emoji' | 'sticker' | 'gif'): Promise<any[]>;
+    addFavorite(userId: string, type: 'emoji' | 'sticker' | 'gif', value: string): Promise<any>;
+    removeFavorite(userId: string, id: string): Promise<void>;
+    reorderFavorites(userId: string, orderedIds: string[]): Promise<void>;
+    getActivityHiddenFrom(userId: string): Promise<string[]>;
+    hideActivityFrom(userId: string, targetUserId: string): Promise<void>;
+    showActivityTo(userId: string, targetUserId: string): Promise<void>;
+    isActivityHiddenFrom(userId: string, viewerId: string): Promise<boolean>;
+    getPinnedConversations(userId: string): Promise<Array<{
+        conversationId: string;
+        pinOrder: number;
+    }>>;
+    pinConversation(userId: string, conversationId: string): Promise<void>;
+    unpinConversation(userId: string, conversationId: string): Promise<void>;
 }
 export declare const userService: UserService;
 //# sourceMappingURL=users.service.d.ts.map

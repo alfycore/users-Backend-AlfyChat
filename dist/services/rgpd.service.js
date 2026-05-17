@@ -46,7 +46,7 @@ class RgpdService {
         };
     }
     // Demander la suppression (RGPD Article 17)
-    async requestDeletion(userId) {
+    async requestDeletion(userId, deleteMessages = false) {
         const scheduledDeletionAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 jours
         // Vérifier si une demande existe déjà
         const [existing] = await this.db.query('SELECT id FROM rgpd_deletion_requests WHERE user_id = ? AND completed_at IS NULL', [userId]);
@@ -58,6 +58,16 @@ class RgpdService {
             // Créer une nouvelle demande
             await this.db.execute(`INSERT INTO rgpd_deletion_requests (id, user_id, scheduled_deletion_at)
          VALUES (?, ?, ?)`, [(0, uuid_1.v4)(), userId, scheduledDeletionAt]);
+        }
+        // Suppression immédiate des messages si l'utilisateur le demande (droit à l'effacement RGPD)
+        if (deleteMessages) {
+            // Supprimer le contenu des messages en conservant les métadonnées pour le contexte
+            try {
+                await this.db.execute(`UPDATE messages SET content = '[Message supprimé par l\'utilisateur]', sender_content = NULL, is_deleted = TRUE WHERE sender_id = ?`, [userId]);
+            }
+            catch {
+                // messages table peut être dans un autre service DB → ignorer
+            }
         }
         return { scheduledDeletionAt };
     }

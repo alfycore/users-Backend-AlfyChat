@@ -2,12 +2,45 @@
 // ==========================================
 // ALFYCHAT - SERVICE UTILISATEURS
 // ==========================================
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.userService = exports.UserService = void 0;
-const bcrypt_1 = __importDefault(require("bcrypt"));
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const database_1 = require("../database");
 const redis_1 = require("../redis");
 const badges_1 = require("../types/badges");
@@ -25,9 +58,13 @@ class UserService {
         if (cached) {
             return JSON.parse(cached);
         }
-        const [rows] = await this.db.query(`SELECT id, username, email, display_name, avatar_url, banner_url, bio, 
-              card_color, badges, show_badges, role, status, is_online, tutorial_completed, created_at, last_seen_at
-       FROM users WHERE id = ?`, [userId]);
+        const [rows] = await this.db.query(`SELECT u.id, u.username, u.email, u.display_name, u.avatar_url, u.banner_url, u.bio,
+              u.card_color, u.badges, u.show_badges, u.hidden_badge_ids, u.role, u.status, u.is_online,
+              u.tutorial_completed, u.created_at, u.last_seen_at, u.custom_status, u.status_emoji,
+              up.interests
+       FROM users u
+       LEFT JOIN user_preferences up ON up.user_id = u.id
+       WHERE u.id = ?`, [userId]);
         const users = rows;
         if (users.length === 0)
             return null;
@@ -41,8 +78,9 @@ class UserService {
         if (userIds.length === 0)
             return [];
         const placeholders = userIds.map(() => '?').join(',');
-        const [rows] = await this.db.query(`SELECT id, username, display_name, avatar_url, banner_url, bio, 
-              card_color, badges, show_badges, role, status, is_online, created_at, last_seen_at
+        const [rows] = await this.db.query(`SELECT id, username, display_name, avatar_url, banner_url, bio,
+              card_color, badges, show_badges, hidden_badge_ids, role, status, is_online,
+              created_at, last_seen_at, custom_status, status_emoji
        FROM users WHERE id IN (${placeholders})`, userIds);
         return rows.map(row => this.formatUser(row));
     }
@@ -61,7 +99,7 @@ class UserService {
     // Rechercher des utilisateurs
     async search(query, limit = 20) {
         const [rows] = await this.db.query(`SELECT id, username, display_name, avatar_url, banner_url, card_color, 
-              badges, show_badges, role, status, is_online
+              badges, show_badges, hidden_badge_ids, role, status, is_online
        FROM users 
        WHERE username LIKE ? OR display_name LIKE ?
        LIMIT ?`, [`%${query}%`, `%${query}%`, String(limit)]);
@@ -111,6 +149,10 @@ class UserService {
             updates.push('show_badges = ?');
             params.push(data.showBadges ? 1 : 0);
         }
+        if (data.hiddenBadgeIds !== undefined) {
+            updates.push('hidden_badge_ids = ?');
+            params.push(JSON.stringify(data.hiddenBadgeIds));
+        }
         if (data.tutorialCompleted !== undefined) {
             updates.push('tutorial_completed = ?');
             params.push(data.tutorialCompleted ? 1 : 0);
@@ -122,8 +164,21 @@ class UserService {
         }
     }
     // Mettre à jour le statut
-    async updateStatus(userId, status) {
-        await this.db.execute('UPDATE users SET status = ?, is_online = ? WHERE id = ?', [status, status !== 'offline', userId]);
+    async updateStatus(userId, status, customStatus, emoji) {
+        // invisible → is_online = FALSE (l'utilisateur est techniquement connecté mais se cache)
+        const isOnline = status !== 'offline' && status !== 'invisible';
+        if (customStatus !== undefined || emoji !== undefined) {
+            await this.db.execute('UPDATE users SET status = ?, is_online = ?, custom_status = ?, status_emoji = ? WHERE id = ?', [status, isOnline, customStatus !== undefined ? (customStatus?.slice(0, 100) ?? null) : null,
+                emoji !== undefined ? (emoji?.slice(0, 10) ?? null) : null, userId]);
+        }
+        else {
+            await this.db.execute('UPDATE users SET status = ?, is_online = ? WHERE id = ?', [status, isOnline, userId]);
+        }
+        await this.invalidateCache(userId);
+    }
+    // Mettre à jour uniquement le statut personnalisé
+    async updateCustomStatus(userId, customStatus) {
+        await this.db.execute('UPDATE users SET custom_status = ? WHERE id = ?', [customStatus ? customStatus.slice(0, 100) : null, userId]);
         await this.invalidateCache(userId);
     }
     // Mettre à jour last seen
@@ -161,8 +216,10 @@ class UserService {
             quietEnd: 'quiet_end',
             vacationStart: 'vacation_start',
             vacationEnd: 'vacation_end',
+            layoutPrefs: 'layout_prefs',
+            wallpaper: 'wallpaper',
         };
-        const jsonFields = new Set(['interests', 'notifKeywords']);
+        const jsonFields = new Set(['interests', 'notifKeywords', 'layoutPrefs']);
         const updates = [];
         const params = [];
         for (const [key, column] of Object.entries(allowedFields)) {
@@ -181,19 +238,52 @@ class UserService {
             await this.invalidateCache(userId);
         }
     }
-    // Changer le mot de passe
-    async changePassword(userId, currentPassword, newPassword) {
+    // Vérifier la disponibilité d'un nom d'utilisateur
+    async checkUsernameAvailable(username) {
+        const [rows] = await this.db.query('SELECT id FROM users WHERE username = ?', [username]);
+        return rows.length === 0;
+    }
+    // Changer le nom d'utilisateur (nécessite le mot de passe)
+    async changeUsername(userId, newUsername, password) {
+        // Vérifier le mot de passe
         const [rows] = await this.db.query('SELECT password_hash FROM users WHERE id = ?', [userId]);
         const users = rows;
         if (users.length === 0) {
             return { success: false, error: 'Utilisateur non trouvé' };
         }
-        const isValid = await bcrypt_1.default.compare(currentPassword, users[0].password_hash);
+        const isValid = await bcryptjs_1.default.compare(password, users[0].password_hash);
+        if (!isValid) {
+            return { success: false, error: 'Mot de passe incorrect' };
+        }
+        // Vérifier la disponibilité
+        const available = await this.checkUsernameAvailable(newUsername);
+        if (!available) {
+            return { success: false, error: 'Ce nom d\'utilisateur est déjà pris' };
+        }
+        // Mettre à jour
+        await this.db.execute('UPDATE users SET username = ? WHERE id = ?', [newUsername, userId]);
+        await this.invalidateCache(userId);
+        return { success: true };
+    }
+    // Changer le mot de passe
+    async changePassword(userId, currentPassword, newPassword, encryptedPrivateKey, keySalt) {
+        const [rows] = await this.db.query('SELECT password_hash FROM users WHERE id = ?', [userId]);
+        const users = rows;
+        if (users.length === 0) {
+            return { success: false, error: 'Utilisateur non trouvé' };
+        }
+        const isValid = await bcryptjs_1.default.compare(currentPassword, users[0].password_hash);
         if (!isValid) {
             return { success: false, error: 'Mot de passe actuel incorrect' };
         }
-        const newHash = await bcrypt_1.default.hash(newPassword, 12);
-        await this.db.execute('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, userId]);
+        const newHash = await bcryptjs_1.default.hash(newPassword, 12);
+        // Update password hash + re-encrypted E2EE key if provided
+        if (encryptedPrivateKey && keySalt) {
+            await this.db.execute('UPDATE users SET password_hash = ?, encrypted_private_key = ?, key_salt = ? WHERE id = ?', [newHash, encryptedPrivateKey, keySalt, userId]);
+        }
+        else {
+            await this.db.execute('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, userId]);
+        }
         return { success: true };
     }
     // ============ GESTION DES BADGES ============
@@ -298,12 +388,38 @@ class UserService {
             cardColor: row.card_color,
             badges,
             showBadges: row.show_badges !== undefined ? Boolean(row.show_badges) : true,
+            hiddenBadgeIds: (() => {
+                if (!row.hidden_badge_ids)
+                    return [];
+                if (Array.isArray(row.hidden_badge_ids))
+                    return row.hidden_badge_ids;
+                try {
+                    return JSON.parse(row.hidden_badge_ids);
+                }
+                catch {
+                    return [];
+                }
+            })(),
             tutorialCompleted: Boolean(row.tutorial_completed),
             role: row.role || 'user',
             status: row.status,
+            customStatus: row.custom_status || null,
+            statusEmoji: row.status_emoji || null,
             isOnline: Boolean(row.is_online),
             createdAt: row.created_at,
             lastSeenAt: row.last_seen_at,
+            interests: (() => {
+                if (!row.interests)
+                    return [];
+                if (Array.isArray(row.interests))
+                    return row.interests;
+                try {
+                    return JSON.parse(row.interests);
+                }
+                catch {
+                    return [];
+                }
+            })(),
         };
     }
     // Formater les préférences pour la réponse
@@ -350,7 +466,89 @@ class UserService {
             quietEnd: row.quiet_end || undefined,
             vacationStart: formatDate(row.vacation_start),
             vacationEnd: formatDate(row.vacation_end),
+            layoutPrefs: parseJsonField(row.layout_prefs),
+            wallpaper: row.wallpaper ?? null,
         };
+    }
+    // ============================================================
+    // NOUVELLES FEATURES — PRIVACY & CUSTOMISATION
+    // ============================================================
+    // Vérifier si viewerId est dans la liste bloquée de targetId
+    // (targetId a bloqué viewerId → cacher le profil de targetId au viewerId)
+    async isBlockedBy(viewerId, targetId) {
+        // La table blocked_users est dans le service friends mais répliquée en Redis
+        // Pour éviter une requête cross-service, on fait une query directe sur la DB partagée
+        try {
+            const [rows] = await this.db.query(`SELECT 1 FROM blocked_users WHERE user_id = ? AND blocked_user_id = ? LIMIT 1`, [targetId, viewerId]);
+            return rows.length > 0;
+        }
+        catch {
+            return false; // table absente dans ce service DB → ne pas bloquer
+        }
+    }
+    // Mettre à jour la présence musicale
+    async updateMusicPresence(userId, data) {
+        await this.db.execute('UPDATE users SET music_presence = ? WHERE id = ?', [data !== null ? JSON.stringify(data) : null, userId]);
+        await this.invalidateCache(userId);
+    }
+    // Mettre à jour la profile card
+    async updateProfileCard(userId, profileCardUrl) {
+        await this.db.execute('UPDATE users SET profile_card_url = ? WHERE id = ?', [profileCardUrl, userId]);
+        await this.invalidateCache(userId);
+    }
+    // ---- Favoris (emojis/stickers/gifs) ----
+    async getFavorites(userId, type) {
+        if (type) {
+            const [rows] = await this.db.query('SELECT id, type, value, position FROM user_favorites WHERE user_id = ? AND type = ? ORDER BY position ASC', [userId, type]);
+            return rows;
+        }
+        const [rows] = await this.db.query('SELECT id, type, value, position FROM user_favorites WHERE user_id = ? ORDER BY type ASC, position ASC', [userId]);
+        return rows;
+    }
+    async addFavorite(userId, type, value) {
+        const { v4: uuidv4 } = await Promise.resolve().then(() => __importStar(require('uuid')));
+        const id = uuidv4();
+        // position = max existant + 1
+        const [posRows] = await this.db.query('SELECT COALESCE(MAX(position), -1) as maxPos FROM user_favorites WHERE user_id = ? AND type = ?', [userId, type]);
+        const position = (posRows[0]?.maxPos ?? -1) + 1;
+        await this.db.execute('INSERT IGNORE INTO user_favorites (id, user_id, type, value, position) VALUES (?, ?, ?, ?, ?)', [id, userId, type, value, position]);
+        return { id, type, value, position };
+    }
+    async removeFavorite(userId, id) {
+        await this.db.execute('DELETE FROM user_favorites WHERE id = ? AND user_id = ?', [id, userId]);
+    }
+    async reorderFavorites(userId, orderedIds) {
+        for (let i = 0; i < orderedIds.length; i++) {
+            await this.db.execute('UPDATE user_favorites SET position = ? WHERE id = ? AND user_id = ?', [i, orderedIds[i], userId]);
+        }
+    }
+    // ---- Visibilité de l'activité ----
+    async getActivityHiddenFrom(userId) {
+        const [rows] = await this.db.query('SELECT hidden_from_user_id FROM activity_visibility_exceptions WHERE user_id = ?', [userId]);
+        return rows.map(r => r.hidden_from_user_id);
+    }
+    async hideActivityFrom(userId, targetUserId) {
+        await this.db.execute('INSERT IGNORE INTO activity_visibility_exceptions (user_id, hidden_from_user_id) VALUES (?, ?)', [userId, targetUserId]);
+    }
+    async showActivityTo(userId, targetUserId) {
+        await this.db.execute('DELETE FROM activity_visibility_exceptions WHERE user_id = ? AND hidden_from_user_id = ?', [userId, targetUserId]);
+    }
+    async isActivityHiddenFrom(userId, viewerId) {
+        const [rows] = await this.db.query('SELECT 1 FROM activity_visibility_exceptions WHERE user_id = ? AND hidden_from_user_id = ? LIMIT 1', [userId, viewerId]);
+        return rows.length > 0;
+    }
+    // ---- DMs épinglés ----
+    async getPinnedConversations(userId) {
+        const [rows] = await this.db.query('SELECT conversation_id, pin_order FROM pinned_conversations WHERE user_id = ? ORDER BY pin_order ASC', [userId]);
+        return rows.map(r => ({ conversationId: r.conversation_id, pinOrder: r.pin_order }));
+    }
+    async pinConversation(userId, conversationId) {
+        const [posRows] = await this.db.query('SELECT COALESCE(MAX(pin_order), -1) as maxOrd FROM pinned_conversations WHERE user_id = ?', [userId]);
+        const pinOrder = (posRows[0]?.maxOrd ?? -1) + 1;
+        await this.db.execute('INSERT IGNORE INTO pinned_conversations (user_id, conversation_id, pin_order) VALUES (?, ?, ?)', [userId, conversationId, pinOrder]);
+    }
+    async unpinConversation(userId, conversationId) {
+        await this.db.execute('DELETE FROM pinned_conversations WHERE user_id = ? AND conversation_id = ?', [userId, conversationId]);
     }
 }
 exports.UserService = UserService;

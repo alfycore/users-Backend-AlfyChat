@@ -13,7 +13,7 @@ exports.authRouter = (0, express_1.Router)();
 // Paramètres d'inscription publics (pas d'auth requise)
 exports.authRouter.get('/register/settings', auth_controller_1.authController.getRegisterSettings.bind(auth_controller_1.authController));
 // Inscription
-exports.authRouter.post('/register', (0, express_validator_1.body)('email').isEmail().normalizeEmail(), (0, express_validator_1.body)('username').isString().isLength({ min: 3, max: 32 }).matches(/^[a-zA-Z0-9_]+$/), (0, express_validator_1.body)('password').isString().isLength({ min: 8 }), (0, express_validator_1.body)('displayName').optional().isString().isLength({ max: 64 }), (0, express_validator_1.body)('inviteCode').optional().isString(), (0, express_validator_1.body)('turnstileToken').optional().isString(), validate_1.validateRequest, auth_controller_1.authController.register.bind(auth_controller_1.authController));
+exports.authRouter.post('/register', (0, express_validator_1.body)('email').isEmail().normalizeEmail(), (0, express_validator_1.body)('username').isString().isLength({ min: 3, max: 32 }).matches(/^[a-zA-Z0-9_]+$/), (0, express_validator_1.body)('password').isString().isLength({ min: 8 }), (0, express_validator_1.body)('displayName').optional().isString().isLength({ max: 64 }), (0, express_validator_1.body)('inviteCode').optional().isString(), (0, express_validator_1.body)('turnstileToken').optional().isString(), (0, express_validator_1.body)('publicKey').optional().isString(), (0, express_validator_1.body)('encryptedPrivateKey').optional().isString(), (0, express_validator_1.body)('keySalt').optional().isString().isLength({ max: 64 }), validate_1.validateRequest, auth_controller_1.authController.register.bind(auth_controller_1.authController));
 // Connexion
 exports.authRouter.post('/login', (0, express_validator_1.body)('email').isEmail().normalizeEmail(), (0, express_validator_1.body)('password').isString().isLength({ min: 1 }), validate_1.validateRequest, auth_controller_1.authController.login.bind(auth_controller_1.authController));
 // Finaliser la connexion avec code 2FA
@@ -31,6 +31,15 @@ exports.authRouter.get('/verify', auth_1.authMiddleware, auth_controller_1.authC
 // ==========================================
 exports.authRouter.get('/verify-email', auth_controller_1.authController.verifyEmail.bind(auth_controller_1.authController));
 exports.authRouter.post('/resend-verification', auth_1.authMiddleware, auth_controller_1.authController.resendVerification.bind(auth_controller_1.authController));
+// Renvoyer l'email de vérification sans être authentifié (depuis la page de connexion)
+exports.authRouter.post('/resend-verification-email', (0, express_validator_1.body)('email').isEmail().normalizeEmail(), validate_1.validateRequest, auth_controller_1.authController.resendVerificationByEmail.bind(auth_controller_1.authController));
+// ==========================================
+// RÉINITIALISATION DE MOT DE PASSE
+// ==========================================
+// Demander un lien de réinitialisation
+exports.authRouter.post('/forgot-password', (0, express_validator_1.body)('email').isEmail().normalizeEmail(), validate_1.validateRequest, auth_controller_1.authController.requestPasswordReset.bind(auth_controller_1.authController));
+// Appliquer le nouveau mot de passe
+exports.authRouter.post('/reset-password', (0, express_validator_1.body)('token').isString().isLength({ min: 1 }), (0, express_validator_1.body)('password').isString().isLength({ min: 8 }), validate_1.validateRequest, auth_controller_1.authController.resetPassword.bind(auth_controller_1.authController));
 // ==========================================
 // 2FA (TOTP)
 // ==========================================
@@ -42,6 +51,10 @@ exports.authRouter.post('/2fa/setup', auth_1.authMiddleware, auth_controller_1.a
 exports.authRouter.post('/2fa/enable', auth_1.authMiddleware, (0, express_validator_1.body)('code').isString().isLength({ min: 6, max: 6 }), validate_1.validateRequest, auth_controller_1.authController.enable2FA.bind(auth_controller_1.authController));
 // Désactiver le 2FA
 exports.authRouter.post('/2fa/disable', auth_1.authMiddleware, (0, express_validator_1.body)('code').isString().isLength({ min: 6, max: 8 }), validate_1.validateRequest, auth_controller_1.authController.disable2FA.bind(auth_controller_1.authController));
+// Récupérer ses propres clés E2EE
+exports.authRouter.get('/keys', auth_1.authMiddleware, auth_controller_1.authController.getKeys.bind(auth_controller_1.authController));
+// Sauvegarder les clés E2EE (utilisateurs existants sans clé)
+exports.authRouter.patch('/keys', auth_1.authMiddleware, (0, express_validator_1.body)('publicKey').isString(), (0, express_validator_1.body)('encryptedPrivateKey').isString(), (0, express_validator_1.body)('keySalt').isString().isLength({ max: 64 }), validate_1.validateRequest, auth_controller_1.authController.saveKeys.bind(auth_controller_1.authController));
 // Récupérer l'utilisateur courant
 exports.authRouter.get('/me', auth_1.authMiddleware, auth_controller_1.authController.me.bind(auth_controller_1.authController));
 // ==========================================

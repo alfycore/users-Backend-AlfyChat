@@ -210,6 +210,75 @@ class AdminController {
             res.status(500).json({ error: 'Erreur serveur' });
         }
     }
+    // ============ CHANGELOGS ============
+    async getChangelogs(req, res) {
+        try {
+            const limit = parseInt(req.query.limit) || 50;
+            const offset = parseInt(req.query.offset) || 0;
+            const changelogs = await admin_service_1.adminService.getChangelogs(limit, offset);
+            res.json(changelogs);
+        }
+        catch (error) {
+            logger_1.logger.error('Erreur récupération changelogs:', error);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
+    }
+    async createChangelog(req, res) {
+        try {
+            const { version, title, content, type, bannerUrl } = req.body;
+            if (!title || !content) {
+                return res.status(400).json({ error: 'title et content requis' });
+            }
+            const validTypes = ['feature', 'fix', 'improvement', 'security', 'breaking', 'news'];
+            const changelogType = validTypes.includes(type) ? type : 'feature';
+            const changelog = await admin_service_1.adminService.createChangelog({
+                version,
+                title,
+                content,
+                type: changelogType,
+                bannerUrl: typeof bannerUrl === 'string' && bannerUrl.trim() ? bannerUrl.trim() : null,
+                createdBy: req.userId,
+            });
+            logger_1.logger.info(`Changelog créé: ${changelog.id} par ${req.userId}`);
+            res.status(201).json(changelog);
+        }
+        catch (error) {
+            logger_1.logger.error('Erreur création changelog:', error);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
+    }
+    async updateChangelog(req, res) {
+        try {
+            const { changelogId } = req.params;
+            const { version, title, content, type, bannerUrl } = req.body;
+            const validTypes = ['feature', 'fix', 'improvement', 'security', 'breaking', 'news'];
+            await admin_service_1.adminService.updateChangelog(changelogId, {
+                version: version !== undefined ? (String(version).trim() || '') : undefined,
+                title: title?.trim(),
+                content: content?.trim(),
+                type: validTypes.includes(type) ? type : undefined,
+                bannerUrl: typeof bannerUrl === 'string' ? (bannerUrl.trim() || null) : bannerUrl === null ? null : undefined,
+            });
+            logger_1.logger.info(`Changelog ${changelogId} mis à jour par ${req.userId}`);
+            res.json({ success: true });
+        }
+        catch (error) {
+            logger_1.logger.error('Erreur mise à jour changelog:', error);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
+    }
+    async deleteChangelog(req, res) {
+        try {
+            const { changelogId } = req.params;
+            await admin_service_1.adminService.deleteChangelog(changelogId);
+            logger_1.logger.info(`Changelog ${changelogId} supprimé par ${req.userId}`);
+            res.json({ success: true });
+        }
+        catch (error) {
+            logger_1.logger.error('Erreur suppression changelog:', error);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
+    }
 }
 exports.AdminController = AdminController;
 exports.adminController = new AdminController();

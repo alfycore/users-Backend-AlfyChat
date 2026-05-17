@@ -38,11 +38,16 @@ class RgpdController {
             if (req.userId !== userId) {
                 return res.status(403).json({ error: 'Non autorisé' });
             }
-            const result = await rgpdService.requestDeletion(userId);
+            // Optionnel: supprimer les messages immédiatement (art. 17 RGPD)
+            const deleteMessages = Boolean(req.body?.deleteMessages);
+            const result = await rgpdService.requestDeletion(userId, deleteMessages);
             res.json({
                 success: true,
                 scheduledDeletionAt: result.scheduledDeletionAt,
-                message: 'Votre compte sera supprimé dans 30 jours. Vous pouvez annuler cette demande.',
+                messagesDeleted: deleteMessages,
+                message: deleteMessages
+                    ? 'Vos messages ont été supprimés. Votre compte sera définitivement effacé dans 30 jours.'
+                    : 'Votre compte sera supprimé dans 30 jours. Vous pouvez annuler cette demande.',
             });
         }
         catch (error) {

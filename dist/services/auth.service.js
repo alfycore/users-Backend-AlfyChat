@@ -7,7 +7,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.authService = exports.AuthService = void 0;
-const bcrypt_1 = __importDefault(require("bcrypt"));
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const uuid_1 = require("uuid");
 const crypto_1 = __importDefault(require("crypto"));
@@ -18,10 +18,21 @@ const email_service_1 = require("./email.service");
 const twofa_service_1 = require("./twofa.service");
 const userService = new users_service_1.UserService();
 class AuthService {
-    JWT_SECRET = process.env.JWT_SECRET || 'alfychat-super-secret-key-dev-2026';
+    JWT_SECRET;
+    JWT_REFRESH_SECRET;
     ACCESS_TOKEN_EXPIRY = '15m';
-    REFRESH_TOKEN_EXPIRY = '7d';
+    REFRESH_TOKEN_EXPIRY = '365d';
     ACCESS_TOKEN_EXPIRY_SECONDS = 15 * 60;
+    constructor() {
+        const secret = process.env.JWT_SECRET;
+        const refreshSecret = process.env.JWT_REFRESH_SECRET;
+        if (!secret)
+            throw new Error('JWT_SECRET environment variable is required');
+        if (!refreshSecret)
+            throw new Error('JWT_REFRESH_SECRET environment variable is required');
+        this.JWT_SECRET = secret;
+        this.JWT_REFRESH_SECRET = refreshSecret;
+    }
     get db() {
         return (0, database_1.getDatabaseClient)();
     }
@@ -41,7 +52,7 @@ class AuthService {
             return { success: false, error: 'Ce nom d\'utilisateur est déjà pris' };
         }
         // Hasher le mot de passe
-        const passwordHash = await bcrypt_1.default.hash(data.password, 12);
+        const passwordHash = await bcryptjs_1.default.hash(data.password, 12);
         // Créer l'utilisateur
         const userId = (0, uuid_1.v4)();
         const user = await userService.create({
@@ -51,6 +62,10 @@ class AuthService {
             displayName: data.displayName,
             passwordHash,
         });
+        // Stocker les clés E2EE si fournies
+        if (data.publicKey && data.encryptedPrivateKey && data.keySalt) {
+            await this.db.execute('UPDATE users SET public_key = ?, encrypted_private_key = ?, key_salt = ? WHERE id = ?', [data.publicKey, data.encryptedPrivateKey, data.keySalt, userId]);
+        }
         // Créer les consentements RGPD par défaut
         await this.createDefaultConsents(userId);
         // Envoyer l'email de vérification (non bloquant)
@@ -66,16 +81,21 @@ class AuthService {
     // Connexion
     async login(email, password, ipAddress, userAgent) {
         // Chercher l'utilisateur
-        const [rows] = await this.db.query('SELECT id, email, username, display_name, avatar_url, status, password_hash, totp_enabled FROM users WHERE email = ?', [email]);
+        const [rows] = await this.db.query('SELECT id, email, username, display_name, avatar_url, status, password_hash, totp_enabled, email_verified, key_salt, encrypted_private_key, public_key FROM users WHERE email = ?', [email]);
         const users = rows;
         if (users.length === 0) {
             return { success: false, error: 'Email ou mot de passe incorrect' };
         }
         const dbUser = users[0];
         // Vérifier le mot de passe
-        const isValid = await bcrypt_1.default.compare(password, dbUser.password_hash);
+        const isValid = await bcryptjs_1.default.compare(password, dbUser.password_hash);
         if (!isValid) {
             return { success: false, error: 'Email ou mot de passe incorrect' };
+        }
+        // Email non vérifié
+        const isVerified = dbUser.email_verified === 1 || dbUser.email_verified === true;
+        if (!isVerified) {
+            return { success: false, emailNotVerified: true };
         }
         // 2FA requis ?
         const has2FA = dbUser.totp_enabled === 1 || dbUser.totp_enabled === true;
@@ -87,9 +107,7 @@ class AuthService {
                 twoFactorToken,
             };
         }
-        // Mettre à jour le statut
-        await userService.updateStatus(dbUser.id, 'online');
-        // Générer les tokens
+        // Générer les tokens (le statut de présence est géré par le gateway au moment de la connexion socket)
         const tokens = await this.generateTokens(dbUser.id, ipAddress, userAgent);
         const user = {
             id: dbUser.id,
@@ -97,13 +115,16 @@ class AuthService {
             username: dbUser.username,
             displayName: dbUser.display_name,
             avatarUrl: dbUser.avatar_url,
-            status: 'online',
+            status: dbUser.status || 'offline',
             isOnline: true,
         };
         return {
             success: true,
             user,
             tokens,
+            ...(dbUser.key_salt && { keySalt: dbUser.key_salt }),
+            ...(dbUser.encrypted_private_key && { encryptedPrivateKey: dbUser.encrypted_private_key }),
+            ...(!dbUser.public_key && { keyMissing: true }),
         };
     }
     // Finaliser la connexion après validation du 2FA
@@ -116,13 +137,12 @@ class AuthService {
         if (!isValid) {
             return { success: false, error: 'Code 2FA invalide.' };
         }
-        const [rows] = await this.db.query('SELECT id, email, username, display_name, avatar_url, status FROM users WHERE id = ?', [userId]);
+        const [rows] = await this.db.query('SELECT id, email, username, display_name, avatar_url, status, key_salt, encrypted_private_key, public_key FROM users WHERE id = ?', [userId]);
         const users = rows;
         if (users.length === 0) {
             return { success: false, error: 'Utilisateur introuvable.' };
         }
         const dbUser = users[0];
-        await userService.updateStatus(dbUser.id, 'online');
         const tokens = await this.generateTokens(dbUser.id, ipAddress, userAgent);
         const user = {
             id: dbUser.id,
@@ -130,16 +150,23 @@ class AuthService {
             username: dbUser.username,
             displayName: dbUser.display_name,
             avatarUrl: dbUser.avatar_url,
-            status: 'online',
+            status: dbUser.status || 'offline',
             isOnline: true,
         };
-        return { success: true, user, tokens };
+        return {
+            success: true,
+            user,
+            tokens,
+            ...(dbUser.key_salt && { keySalt: dbUser.key_salt }),
+            ...(dbUser.encrypted_private_key && { encryptedPrivateKey: dbUser.encrypted_private_key }),
+            ...(!dbUser.public_key && { keyMissing: true }),
+        };
     }
     // Rafraîchir les tokens
     async refreshTokens(refreshToken) {
         try {
             // Vérifier le token
-            const payload = jsonwebtoken_1.default.verify(refreshToken, this.JWT_SECRET);
+            const payload = jsonwebtoken_1.default.verify(refreshToken, this.JWT_REFRESH_SECRET);
             if (payload.type !== 'refresh') {
                 return { success: false, error: 'Token invalide' };
             }
@@ -173,7 +200,7 @@ class AuthService {
     // Déconnexion
     async logout(refreshToken) {
         // Révoquer le token
-        await this.redis.set(`revoked:${refreshToken}`, '1', 7 * 24 * 60 * 60);
+        await this.redis.set(`revoked:${refreshToken}`, '1', 365 * 24 * 60 * 60);
         // Supprimer la session
         await this.db.execute('DELETE FROM sessions WHERE refresh_token = ?', [refreshToken]);
     }
@@ -183,7 +210,7 @@ class AuthService {
         const [rows] = await this.db.query('SELECT refresh_token FROM sessions WHERE user_id = ?', [userId]);
         // Révoquer tous les tokens
         for (const row of rows) {
-            await this.redis.set(`revoked:${row.refresh_token}`, '1', 7 * 24 * 60 * 60);
+            await this.redis.set(`revoked:${row.refresh_token}`, '1', 365 * 24 * 60 * 60);
         }
         // Supprimer toutes les sessions
         await this.db.execute('DELETE FROM sessions WHERE user_id = ?', [userId]);
@@ -209,11 +236,19 @@ class AuthService {
     }
     // Générer les tokens
     async generateTokens(userId, ipAddress, userAgent) {
-        const accessToken = jsonwebtoken_1.default.sign({ userId, type: 'access' }, this.JWT_SECRET, { expiresIn: this.ACCESS_TOKEN_EXPIRY });
-        const refreshToken = jsonwebtoken_1.default.sign({ userId, type: 'refresh' }, this.JWT_SECRET, { expiresIn: this.REFRESH_TOKEN_EXPIRY });
+        // Récupérer le rôle pour l'inclure dans le JWT
+        let role = 'user';
+        try {
+            const [rows] = await this.db.query('SELECT role FROM users WHERE id = ?', [userId]);
+            if (rows.length > 0)
+                role = rows[0].role || 'user';
+        }
+        catch { /* fallback to 'user' */ }
+        const accessToken = jsonwebtoken_1.default.sign({ userId, type: 'access', role }, this.JWT_SECRET, { expiresIn: this.ACCESS_TOKEN_EXPIRY });
+        const refreshToken = jsonwebtoken_1.default.sign({ userId, type: 'refresh' }, this.JWT_REFRESH_SECRET, { expiresIn: this.REFRESH_TOKEN_EXPIRY });
         // Sauvegarder la session
         const sessionId = (0, uuid_1.v4)();
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
         await this.db.execute(`INSERT INTO sessions (id, user_id, refresh_token, expires_at, ip_address, user_agent)
        VALUES (?, ?, ?, ?, ?, ?)`, [sessionId, userId, refreshToken, expiresAt, ipAddress ?? null, userAgent ?? null]);
         return {
@@ -291,6 +326,79 @@ class AuthService {
         }
         const sent = await this.sendEmailVerification(userId, user.email, user.username);
         return sent ? { success: true } : { success: false, error: 'Impossible d\'envoyer l\'email.' };
+    }
+    // Renvoyer l'email de vérification par adresse email (non authentifié)
+    async resendVerificationEmailByAddress(email) {
+        const [rows] = await this.db.query('SELECT id, email, username, email_verified FROM users WHERE email = ?', [email]);
+        const users = rows;
+        if (users.length === 0) {
+            // Réponse neutre pour éviter l'énumération d'emails
+            return { success: true };
+        }
+        const user = users[0];
+        if (user.email_verified === 1 || user.email_verified === true) {
+            return { success: true };
+        }
+        const sent = await this.sendEmailVerification(user.id, user.email, user.username);
+        return sent ? { success: true } : { success: false, error: 'Impossible d\'envoyer l\'email.' };
+    }
+    // Récupérer les clés E2EE de l'utilisateur courant
+    async getUserE2EEKeys(userId) {
+        const [rows] = await this.db.query('SELECT key_salt, encrypted_private_key, public_key FROM users WHERE id = ?', [userId]);
+        const users = rows;
+        if (users.length === 0)
+            return { keySalt: null, encryptedPrivateKey: null, publicKey: null };
+        return {
+            keySalt: users[0].key_salt || null,
+            encryptedPrivateKey: users[0].encrypted_private_key || null,
+            publicKey: users[0].public_key || null,
+        };
+    }
+    // Sauvegarder les clés E2EE pour un utilisateur existant
+    async saveUserKeys(userId, publicKey, encryptedPrivateKey, keySalt) {
+        await this.db.execute('UPDATE users SET public_key = ?, encrypted_private_key = ?, key_salt = ? WHERE id = ?', [publicKey, encryptedPrivateKey, keySalt, userId]);
+        return { success: true };
+    }
+    // Demander une réinitialisation de mot de passe
+    async requestPasswordReset(email) {
+        // Toujours retourner succès pour éviter l'énumération des emails
+        try {
+            const [rows] = await this.db.query('SELECT id, username FROM users WHERE email = ?', [email]);
+            const users = rows;
+            if (users.length === 0)
+                return { success: true };
+            const user = users[0];
+            const token = crypto_1.default.randomBytes(48).toString('hex');
+            // Stocker dans Redis avec TTL de 1h
+            await this.redis.set(`pwreset:${token}`, user.id, 3600);
+            // Envoyer l'email (best-effort)
+            await email_service_1.emailService.sendPasswordResetEmail(email, user.username, token);
+        }
+        catch (err) {
+            // Ne pas exposer l'erreur
+        }
+        return { success: true };
+    }
+    // Réinitialiser le mot de passe avec un token
+    async resetPassword(token, newPassword) {
+        const userId = await this.redis.get(`pwreset:${token}`);
+        if (!userId) {
+            return { success: false, error: 'Lien invalide ou expiré.' };
+        }
+        const passwordHash = await bcryptjs_1.default.hash(newPassword, 12);
+        // Mettre à jour le mot de passe et effacer les clés E2EE
+        // (elles seront régénérées avec le nouveau mot de passe à la prochaine connexion)
+        await this.db.execute(`UPDATE users SET
+         password_hash = ?,
+         encrypted_private_key = NULL,
+         key_salt = NULL,
+         public_key = NULL
+       WHERE id = ?`, [passwordHash, userId]);
+        // Supprimer le token utilisé
+        await this.redis.del(`pwreset:${token}`);
+        // Révoquer toutes les sessions existantes par sécurité
+        await this.logoutAll(userId);
+        return { success: true };
     }
 }
 exports.AuthService = AuthService;

@@ -20,9 +20,9 @@ exports.adminRouter.get('/stats', admin_controller_1.adminController.getStats.bi
 // Récupérer tous les badges
 exports.adminRouter.get('/badges', admin_controller_1.adminController.getAllBadges.bind(admin_controller_1.adminController));
 // Créer un badge
-exports.adminRouter.post('/badges', (0, express_validator_1.body)('name').isString().isLength({ min: 1, max: 100 }), (0, express_validator_1.body)('description').optional().isString(), (0, express_validator_1.body)('iconType').isIn(['bootstrap', 'svg']), (0, express_validator_1.body)('iconValue').isString().isLength({ min: 1 }), (0, express_validator_1.body)('color').isString().matches(/^#[0-9A-Fa-f]{6}$/), (0, express_validator_1.body)('displayOrder').optional().isInt(), validate_1.validateRequest, admin_controller_1.adminController.createBadge.bind(admin_controller_1.adminController));
+exports.adminRouter.post('/badges', (0, express_validator_1.body)('name').isString().isLength({ min: 1, max: 100 }), (0, express_validator_1.body)('description').optional().isString(), (0, express_validator_1.body)('iconType').isIn(['bootstrap', 'svg', 'flaticon']), (0, express_validator_1.body)('iconValue').isString().isLength({ min: 1 }), (0, express_validator_1.body)('color').isString().matches(/^#[0-9A-Fa-f]{6}$/), (0, express_validator_1.body)('displayOrder').optional().isInt(), validate_1.validateRequest, admin_controller_1.adminController.createBadge.bind(admin_controller_1.adminController));
 // Mettre à jour un badge
-exports.adminRouter.patch('/badges/:badgeId', (0, express_validator_1.body)('name').optional().isString().isLength({ min: 1, max: 100 }), (0, express_validator_1.body)('description').optional().isString(), (0, express_validator_1.body)('iconType').optional().isIn(['bootstrap', 'svg']), (0, express_validator_1.body)('iconValue').optional().isString().isLength({ min: 1 }), (0, express_validator_1.body)('color').optional().isString().matches(/^#[0-9A-Fa-f]{6}$/), (0, express_validator_1.body)('displayOrder').optional().isInt(), validate_1.validateRequest, admin_controller_1.adminController.updateBadge.bind(admin_controller_1.adminController));
+exports.adminRouter.patch('/badges/:badgeId', (0, express_validator_1.body)('name').optional().isString().isLength({ min: 1, max: 100 }), (0, express_validator_1.body)('description').optional().isString(), (0, express_validator_1.body)('iconType').optional().isIn(['bootstrap', 'svg', 'flaticon']), (0, express_validator_1.body)('iconValue').optional().isString().isLength({ min: 1 }), (0, express_validator_1.body)('color').optional().isString().matches(/^#[0-9A-Fa-f]{6}$/), (0, express_validator_1.body)('displayOrder').optional().isInt(), validate_1.validateRequest, admin_controller_1.adminController.updateBadge.bind(admin_controller_1.adminController));
 // Activer/désactiver un badge
 exports.adminRouter.patch('/badges/:badgeId/status', (0, express_validator_1.body)('isActive').isBoolean(), validate_1.validateRequest, admin_controller_1.adminController.toggleBadgeStatus.bind(admin_controller_1.adminController));
 // Supprimer un badge
@@ -38,7 +38,7 @@ exports.adminRouter.get('/users', (0, express_validator_1.query)('limit').option
 // Rechercher des utilisateurs
 exports.adminRouter.get('/users/search', (0, express_validator_1.query)('q').isString().isLength({ min: 1 }), validate_1.validateRequest, admin_controller_1.adminController.searchUsers.bind(admin_controller_1.adminController));
 // Mettre à jour le rôle d'un utilisateur
-exports.adminRouter.patch('/users/:userId/role', (0, express_validator_1.body)('role').isIn(['user', 'moderator', 'admin']), validate_1.validateRequest, admin_controller_1.adminController.updateUserRole.bind(admin_controller_1.adminController));
+exports.adminRouter.patch('/users/:userId/role', (0, express_validator_1.body)('role').isIn(['user', 'moderator', 'admin', 'support_l1', 'support_l2', 'technician']), validate_1.validateRequest, admin_controller_1.adminController.updateUserRole.bind(admin_controller_1.adminController));
 // ============ PARAMÈTRES DU SITE ============
 // Récupérer les paramètres
 exports.adminRouter.get('/settings', admin_controller_1.adminController.getSiteSettings.bind(admin_controller_1.adminController));
@@ -51,4 +51,13 @@ exports.adminRouter.post('/invite-links', (0, express_validator_1.body)('email')
 exports.adminRouter.get('/invite-links', admin_controller_1.adminController.getInviteLinks.bind(admin_controller_1.adminController));
 // Supprimer un lien
 exports.adminRouter.delete('/invite-links/:linkId', admin_controller_1.adminController.deleteInviteLink.bind(admin_controller_1.adminController));
+// ============ CHANGELOGS ============
+// Récupérer tous les changelogs (aussi accessible publiquement via /users/changelogs)
+exports.adminRouter.get('/changelogs', admin_controller_1.adminController.getChangelogs.bind(admin_controller_1.adminController));
+// Créer un changelog
+exports.adminRouter.post('/changelogs', (0, express_validator_1.body)('version').optional({ nullable: true }).isString().isLength({ max: 50 }), (0, express_validator_1.body)('title').isString().isLength({ min: 1, max: 255 }), (0, express_validator_1.body)('content').isString().isLength({ min: 1 }), (0, express_validator_1.body)('type').optional().isIn(['feature', 'fix', 'improvement', 'security', 'breaking', 'news']), validate_1.validateRequest, admin_controller_1.adminController.createChangelog.bind(admin_controller_1.adminController));
+// Modifier un changelog
+exports.adminRouter.patch('/changelogs/:changelogId', (0, express_validator_1.body)('version').optional({ nullable: true }).isString().isLength({ max: 50 }), (0, express_validator_1.body)('title').optional().isString().isLength({ min: 1, max: 255 }), (0, express_validator_1.body)('content').optional().isString().isLength({ min: 1 }), (0, express_validator_1.body)('type').optional().isIn(['feature', 'fix', 'improvement', 'security', 'breaking', 'news']), (0, express_validator_1.body)('bannerUrl').optional({ nullable: true }), validate_1.validateRequest, admin_controller_1.adminController.updateChangelog.bind(admin_controller_1.adminController));
+// Supprimer un changelog
+exports.adminRouter.delete('/changelogs/:changelogId', admin_controller_1.adminController.deleteChangelog.bind(admin_controller_1.adminController));
 //# sourceMappingURL=admin.js.map

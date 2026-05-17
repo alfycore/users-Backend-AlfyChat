@@ -10,6 +10,16 @@ const twofa_service_1 = require("../services/twofa.service");
 const logger_1 = require("../utils/logger");
 const authService = new auth_service_1.AuthService();
 const adminService = new admin_service_1.AdminService();
+/** Normalise les adresses IPv4-mapped IPv6 (::ffff:1.2.3.4 → 1.2.3.4) */
+function normalizeIP(ip) {
+    if (!ip)
+        return 'inconnu';
+    if (ip.startsWith('::ffff:'))
+        return ip.slice(7);
+    if (ip === '::1')
+        return '127.0.0.1';
+    return ip;
+}
 class AuthController {
     // Paramètres d'inscription publics
     async getRegisterSettings(req, res) {
@@ -33,7 +43,7 @@ class AuthController {
     // Inscription
     async register(req, res) {
         try {
-            const { email, username, password, displayName, inviteCode, turnstileToken } = req.body;
+            const { email, username, password, displayName, inviteCode, turnstileToken, publicKey, encryptedPrivateKey, keySalt } = req.body;
             // Vérifier si l'inscription est ouverte
             const registrationEnabled = await adminService.isRegistrationEnabled();
             if (!registrationEnabled) {
@@ -66,7 +76,10 @@ class AuthController {
                 username,
                 password,
                 displayName: displayName || username,
-            }, req.ip, req.get('user-agent'));
+                ...(publicKey && { publicKey }),
+                ...(encryptedPrivateKey && { encryptedPrivateKey }),
+                ...(keySalt && { keySalt }),
+            }, normalizeIP(req.ip), req.get('user-agent'));
             if (!result.success) {
                 return res.status(400).json({ error: result.error });
             }
@@ -108,8 +121,11 @@ class AuthController {
                     return res.status(400).json({ error: 'Vérification captcha échouée. Réessayez.' });
                 }
             }
-            const result = await authService.login(email, password, req.ip, req.get('user-agent'));
+            const result = await authService.login(email, password, normalizeIP(req.ip), req.get('user-agent'));
             if (!result.success) {
+                if (result.emailNotVerified) {
+                    return res.status(403).json({ emailNotVerified: true });
+                }
                 return res.status(401).json({ error: result.error });
             }
             // 2FA requis → retourner un token intermédiaire
@@ -122,6 +138,9 @@ class AuthController {
             res.json({
                 user: result.user,
                 tokens: result.tokens,
+                ...(result.keySalt && { keySalt: result.keySalt }),
+                ...(result.encryptedPrivateKey && { encryptedPrivateKey: result.encryptedPrivateKey }),
+                ...(result.keyMissing && { keyMissing: true }),
             });
         }
         catch (error) {
@@ -223,6 +242,21 @@ class AuthController {
             res.status(500).json({ error: 'Erreur serveur' });
         }
     }
+    // Renvoyer l'email de vérification par adresse (non authentifié)
+    async resendVerificationByEmail(req, res) {
+        try {
+            const { email } = req.body;
+            if (!email)
+                return res.status(400).json({ error: 'Email requis' });
+            await authService.resendVerificationEmailByAddress(email);
+            // Toujours succès pour ne pas révéler si l'email existe
+            res.json({ success: true });
+        }
+        catch (error) {
+            logger_1.logger.error('Erreur renvoi vérification par email:', error);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
+    }
     // Renvoyer l'email de vérification
     async resendVerification(req, res) {
         try {
@@ -247,14 +281,52 @@ class AuthController {
             if (!twoFactorToken || !code) {
                 return res.status(400).json({ error: 'Données manquantes' });
             }
-            const result = await authService.loginWith2FA(twoFactorToken, code, req.ip, req.get('user-agent'));
+            const result = await authService.loginWith2FA(twoFactorToken, code, normalizeIP(req.ip), req.get('user-agent'));
             if (!result.success) {
                 return res.status(401).json({ error: result.error });
             }
-            res.json({ user: result.user, tokens: result.tokens });
+            res.json({
+                user: result.user,
+                tokens: result.tokens,
+                ...(result.keySalt && { keySalt: result.keySalt }),
+                ...(result.encryptedPrivateKey && { encryptedPrivateKey: result.encryptedPrivateKey }),
+                ...(result.keyMissing && { keyMissing: true }),
+            });
         }
         catch (error) {
             logger_1.logger.error('Erreur connexion 2FA:', error);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
+    }
+    // Récupérer ses propres clés E2EE
+    async getKeys(req, res) {
+        try {
+            if (!req.userId) {
+                return res.status(401).json({ error: 'Non authentifié' });
+            }
+            const keys = await authService.getUserE2EEKeys(req.userId);
+            res.json(keys);
+        }
+        catch (error) {
+            logger_1.logger.error('Erreur récupération clés E2EE:', error);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
+    }
+    // Sauvegarder les clés E2EE (pour les utilisateurs sans clé)
+    async saveKeys(req, res) {
+        try {
+            if (!req.userId) {
+                return res.status(401).json({ error: 'Non authentifié' });
+            }
+            const { publicKey, encryptedPrivateKey, keySalt } = req.body;
+            if (!publicKey || !encryptedPrivateKey || !keySalt) {
+                return res.status(400).json({ error: 'Données manquantes' });
+            }
+            await authService.saveUserKeys(req.userId, publicKey, encryptedPrivateKey, keySalt);
+            res.json({ success: true });
+        }
+        catch (error) {
+            logger_1.logger.error('Erreur sauvegarde clés E2EE:', error);
             res.status(500).json({ error: 'Erreur serveur' });
         }
     }
@@ -333,6 +405,42 @@ class AuthController {
         }
         catch (error) {
             logger_1.logger.error('Erreur statut 2FA:', error);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
+    }
+    // Demander une réinitialisation de mot de passe
+    async requestPasswordReset(req, res) {
+        try {
+            const { email } = req.body;
+            if (!email)
+                return res.status(400).json({ error: 'Email requis' });
+            // Toujours succès pour éviter l'énumération
+            await authService.requestPasswordReset(email);
+            res.json({ success: true });
+        }
+        catch (error) {
+            logger_1.logger.error('Erreur demande reset mot de passe:', error);
+            res.json({ success: true }); // Toujours succès
+        }
+    }
+    // Réinitialiser le mot de passe
+    async resetPassword(req, res) {
+        try {
+            const { token, password } = req.body;
+            if (!token || !password) {
+                return res.status(400).json({ error: 'Token et mot de passe requis' });
+            }
+            if (password.length < 8) {
+                return res.status(400).json({ error: 'Le mot de passe doit comporter au moins 8 caractères' });
+            }
+            const result = await authService.resetPassword(token, password);
+            if (!result.success) {
+                return res.status(400).json({ error: result.error });
+            }
+            res.json({ success: true });
+        }
+        catch (error) {
+            logger_1.logger.error('Erreur reset mot de passe:', error);
             res.status(500).json({ error: 'Erreur serveur' });
         }
     }

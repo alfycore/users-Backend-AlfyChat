@@ -55,6 +55,14 @@ export declare class SignalKeysService {
      */
     hasBundle(userId: string): Promise<boolean>;
     /**
+     * Retourne l'état du bundle Signal : existence + présence de la clé ECDH P-256.
+     * Évite deux requêtes séparées dans le contrôleur de statut.
+     */
+    getBundleInfo(userId: string): Promise<{
+        hasBundle: boolean;
+        hasEcdhKey: boolean;
+    }>;
+    /**
      * Met à jour uniquement la clé ECDH P-256 du bundle existant.
      */
     updateECDHKey(userId: string, ecdhKey: string): Promise<void>;

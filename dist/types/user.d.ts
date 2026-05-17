@@ -6,8 +6,10 @@ export interface User {
     displayName: string;
     avatarUrl?: string;
     bio?: string;
-    role?: 'user' | 'moderator' | 'admin';
+    role?: 'user' | 'moderator' | 'admin' | 'support_l1' | 'support_l2' | 'technician';
     status: UserStatus;
+    customStatus?: string | null;
+    statusEmoji?: string | null;
     isOnline: boolean;
     createdAt?: Date;
     lastSeenAt?: Date;
@@ -34,6 +36,8 @@ export interface UserPreferences {
     quietEnd?: string;
     vacationStart?: string;
     vacationEnd?: string;
+    layoutPrefs?: Record<string, unknown>;
+    wallpaper?: string | null;
 }
 export interface Session {
     id: string;

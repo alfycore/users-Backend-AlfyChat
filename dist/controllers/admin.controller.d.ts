@@ -17,6 +17,10 @@ export declare class AdminController {
     createInviteLink(req: AuthRequest, res: Response): Promise<void>;
     getInviteLinks(req: AuthRequest, res: Response): Promise<void>;
     deleteInviteLink(req: AuthRequest, res: Response): Promise<void>;
+    getChangelogs(req: AuthRequest, res: Response): Promise<void>;
+    createChangelog(req: AuthRequest, res: Response): Promise<Response<any, Record<string, any>> | undefined>;
+    updateChangelog(req: AuthRequest, res: Response): Promise<void>;
+    deleteChangelog(req: AuthRequest, res: Response): Promise<void>;
 }
 export declare const adminController: AdminController;
 //# sourceMappingURL=admin.controller.d.ts.map

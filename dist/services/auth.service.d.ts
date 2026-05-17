@@ -11,12 +11,18 @@ interface AuthResult {
     };
     twoFactorRequired?: boolean;
     twoFactorToken?: string;
+    keySalt?: string;
+    encryptedPrivateKey?: string;
+    emailNotVerified?: boolean;
+    keyMissing?: boolean;
 }
 export declare class AuthService {
     private readonly JWT_SECRET;
+    private readonly JWT_REFRESH_SECRET;
     private readonly ACCESS_TOKEN_EXPIRY;
     private readonly REFRESH_TOKEN_EXPIRY;
     private readonly ACCESS_TOKEN_EXPIRY_SECONDS;
+    constructor();
     private get db();
     private get redis();
     register(data: {
@@ -24,6 +30,9 @@ export declare class AuthService {
         username: string;
         password: string;
         displayName: string;
+        publicKey?: string;
+        encryptedPrivateKey?: string;
+        keySalt?: string;
     }, ipAddress?: string, userAgent?: string): Promise<AuthResult>;
     login(email: string, password: string, ipAddress?: string, userAgent?: string): Promise<AuthResult>;
     loginWith2FA(twoFactorToken: string, totpCode: string, ipAddress?: string, userAgent?: string): Promise<AuthResult>;
@@ -54,6 +63,26 @@ export declare class AuthService {
         error?: string;
     }>;
     resendVerificationEmail(userId: string): Promise<{
+        success: boolean;
+        error?: string;
+    }>;
+    resendVerificationEmailByAddress(email: string): Promise<{
+        success: boolean;
+        error?: string;
+    }>;
+    getUserE2EEKeys(userId: string): Promise<{
+        keySalt: string | null;
+        encryptedPrivateKey: string | null;
+        publicKey: string | null;
+    }>;
+    saveUserKeys(userId: string, publicKey: string, encryptedPrivateKey: string, keySalt: string): Promise<{
+        success: boolean;
+        error?: string;
+    }>;
+    requestPasswordReset(email: string): Promise<{
+        success: boolean;
+    }>;
+    resetPassword(token: string, newPassword: string): Promise<{
         success: boolean;
         error?: string;
     }>;

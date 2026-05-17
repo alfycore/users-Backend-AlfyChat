@@ -10,10 +10,43 @@ exports.twoFactorService = exports.TwoFactorService = void 0;
 const otplib_1 = require("otplib");
 const qrcode_1 = __importDefault(require("qrcode"));
 const crypto_1 = __importDefault(require("crypto"));
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const database_1 = require("../database");
 const redis_1 = require("../redis");
 const logger_1 = require("../utils/logger");
 const APP_NAME = 'AlfyChat';
+// Clé de chiffrement du secret TOTP au repos. Dérivée de TWOFA_ENCRYPTION_KEY
+// ou, à défaut, de JWT_SECRET — dans les deux cas on applique un HKDF-like
+// SHA-256 pour obtenir une clé 32 octets stable.
+function deriveTotpKey() {
+    const raw = process.env.TWOFA_ENCRYPTION_KEY || process.env.JWT_SECRET || '';
+    if (!raw) {
+        throw new Error('TWOFA_ENCRYPTION_KEY ou JWT_SECRET doit être défini pour chiffrer le secret TOTP');
+    }
+    return crypto_1.default.createHash('sha256').update(`alfychat:totp-key:${raw}`).digest();
+}
+function encryptTotpSecret(plain) {
+    const key = deriveTotpKey();
+    const iv = crypto_1.default.randomBytes(12);
+    const cipher = crypto_1.default.createCipheriv('aes-256-gcm', key, iv);
+    const ct = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    // Format: v1:base64(iv|tag|ct)
+    return 'v1:' + Buffer.concat([iv, tag, ct]).toString('base64');
+}
+function decryptTotpSecret(stored) {
+    // Rétro-compatible : si la valeur n'a pas le préfixe v1:, on suppose un secret en clair
+    // (migration progressive : sera re-chiffré au prochain cycle d'activation).
+    if (!stored.startsWith('v1:'))
+        return stored;
+    const raw = Buffer.from(stored.slice(3), 'base64');
+    const iv = raw.subarray(0, 12);
+    const tag = raw.subarray(12, 28);
+    const ct = raw.subarray(28);
+    const decipher = crypto_1.default.createDecipheriv('aes-256-gcm', deriveTotpKey(), iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
+}
 class TwoFactorService {
     get db() {
         return (0, database_1.getDatabaseClient)();
@@ -23,12 +56,8 @@ class TwoFactorService {
     }
     // Générer un secret TOTP et retourner l'URL otpauth + QR code
     async generateSecret(userId, userEmail) {
-        const secret = (0, otplib_1.generateSecret)();
-        const otpauthUrl = (0, otplib_1.generateURI)({
-            issuer: APP_NAME,
-            label: userEmail,
-            secret,
-        });
+        const secret = otplib_1.authenticator.generateSecret();
+        const otpauthUrl = otplib_1.authenticator.keyuri(userEmail, APP_NAME, secret);
         const qrCodeDataUrl = await qrcode_1.default.toDataURL(otpauthUrl);
         // Stocker le secret temporaire (pas encore activé) dans Redis, expire dans 10 minutes
         await this.redis.set(`2fa:pending:${userId}`, secret, 10 * 60);
@@ -40,15 +69,18 @@ class TwoFactorService {
         if (!pendingSecret) {
             return { success: false, error: 'Session expirée. Veuillez recommencer la configuration.' };
         }
-        const result = await (0, otplib_1.verify)({ secret: pendingSecret, token: totpCode });
-        if (!result.valid) {
+        const isValid = otplib_1.authenticator.verify({ token: totpCode, secret: pendingSecret });
+        if (!isValid) {
             return { success: false, error: 'Code invalide. Vérifiez votre application d\'authentification.' };
         }
-        // Générer les codes de secours
+        // Générer les codes de secours : retournés une seule fois en clair au client,
+        // stockés UNIQUEMENT sous forme de hash bcrypt (jamais en clair ni JSON).
         const backupCodes = this.generateBackupCodes();
-        const backupCodesHash = JSON.stringify(backupCodes);
-        // Sauvegarder le secret en base
-        await this.db.execute(`UPDATE users SET totp_secret = ?, totp_enabled = TRUE, totp_backup_codes = ? WHERE id = ?`, [pendingSecret, backupCodesHash, userId]);
+        const hashedBackupCodes = await Promise.all(backupCodes.map((c) => bcryptjs_1.default.hash(c, 10)));
+        const storedBackupCodes = JSON.stringify(hashedBackupCodes);
+        // Chiffrer le secret TOTP avant persistance (AES-256-GCM)
+        const encryptedSecret = encryptTotpSecret(pendingSecret);
+        await this.db.execute(`UPDATE users SET totp_secret = ?, totp_enabled = TRUE, totp_backup_codes = ? WHERE id = ?`, [encryptedSecret, storedBackupCodes, userId]);
         // Supprimer le secret temporaire
         await this.redis.del(`2fa:pending:${userId}`);
         logger_1.logger.info(`2FA activé pour l'utilisateur ${userId}`);
@@ -61,8 +93,9 @@ class TwoFactorService {
         if (!user) {
             return { success: false, error: '2FA non activé sur ce compte.' };
         }
-        const result2 = await (0, otplib_1.verify)({ secret: user.totp_secret, token: totpCode });
-        if (!result2.valid) {
+        const decryptedSecret = decryptTotpSecret(user.totp_secret);
+        const isValid2 = otplib_1.authenticator.verify({ token: totpCode, secret: decryptedSecret });
+        if (!isValid2) {
             return { success: false, error: 'Code invalide.' };
         }
         await this.db.execute('UPDATE users SET totp_secret = NULL, totp_enabled = FALSE, totp_backup_codes = NULL WHERE id = ?', [userId]);
@@ -76,20 +109,35 @@ class TwoFactorService {
         if (!user)
             return false;
         // Vérifier le code TOTP normal (avec tolérance ±1 step)
-        const result = await (0, otplib_1.verify)({ secret: user.totp_secret, token: totpCode, epochTolerance: 30 });
-        if (result.valid)
+        otplib_1.authenticator.options = { window: 1 };
+        const decryptedSecret = decryptTotpSecret(user.totp_secret);
+        const isValidTotp = otplib_1.authenticator.verify({ token: totpCode, secret: decryptedSecret });
+        if (isValidTotp)
             return true;
-        // Vérifier les codes de secours
+        // Vérifier les codes de secours — comparés en bcrypt (hash à usage unique).
         if (user.totp_backup_codes) {
-            const backupCodes = JSON.parse(user.totp_backup_codes);
+            let stored;
+            try {
+                stored = JSON.parse(user.totp_backup_codes);
+            }
+            catch {
+                stored = [];
+            }
             const normalizedCode = totpCode.trim().toUpperCase();
-            const idx = backupCodes.indexOf(normalizedCode);
-            if (idx !== -1) {
-                // Consommer le code de secours (usage unique)
-                backupCodes.splice(idx, 1);
-                await this.db.execute('UPDATE users SET totp_backup_codes = ? WHERE id = ?', [JSON.stringify(backupCodes), userId]);
-                logger_1.logger.info(`Code de secours 2FA utilisé pour ${userId}`);
-                return true;
+            for (let i = 0; i < stored.length; i++) {
+                const entry = stored[i];
+                // Un hash bcrypt commence par $2a$, $2b$ ou $2y$ — distingue du legacy en clair.
+                const isHash = typeof entry === 'string' && /^\$2[aby]\$/.test(entry);
+                const match = isHash
+                    ? await bcryptjs_1.default.compare(normalizedCode, entry)
+                    : entry === normalizedCode;
+                if (match) {
+                    // Consommer le code (usage unique)
+                    stored.splice(i, 1);
+                    await this.db.execute('UPDATE users SET totp_backup_codes = ? WHERE id = ?', [JSON.stringify(stored), userId]);
+                    logger_1.logger.info(`Code de secours 2FA utilisé pour ${userId}`);
+                    return true;
+                }
             }
         }
         return false;
@@ -114,10 +162,18 @@ class TwoFactorService {
         await this.redis.del(`2fa:session:${token}`);
         return userId;
     }
-    // Générer des codes de secours
+    // Générer des codes de secours (RNG cryptographique — jamais Math.random pour un secret)
     generateBackupCodes(count = 8) {
         const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        return Array.from({ length: count }, () => Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join(''));
+        const codes = [];
+        for (let i = 0; i < count; i++) {
+            const bytes = crypto_1.default.randomBytes(8);
+            let code = '';
+            for (let j = 0; j < 8; j++)
+                code += chars[bytes[j] % chars.length];
+            codes.push(code);
+        }
+        return codes;
     }
 }
 exports.TwoFactorService = TwoFactorService;

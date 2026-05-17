@@ -2,7 +2,7 @@ export interface CustomBadge {
     id: string;
     name: string;
     description?: string;
-    iconType: 'bootstrap' | 'svg';
+    iconType: 'bootstrap' | 'svg' | 'flaticon';
     iconValue: string;
     color: string;
     displayOrder: number;
@@ -14,7 +14,7 @@ export interface CustomBadge {
 export interface CreateBadgeData {
     name: string;
     description?: string;
-    iconType: 'bootstrap' | 'svg';
+    iconType: 'bootstrap' | 'svg' | 'flaticon';
     iconValue: string;
     color: string;
     displayOrder?: number;
@@ -24,7 +24,7 @@ export interface UserAdminData {
     username: string;
     displayName: string;
     email: string;
-    role: 'user' | 'moderator' | 'admin';
+    role: 'user' | 'moderator' | 'admin' | 'support_l1' | 'support_l2' | 'technician';
     badges: any[];
     status: string;
     isOnline: boolean;
@@ -37,11 +37,16 @@ export declare class AdminService {
     getCustomBadge(badgeId: string): Promise<CustomBadge | null>;
     createCustomBadge(data: CreateBadgeData, createdBy: string): Promise<CustomBadge>;
     updateCustomBadge(badgeId: string, data: Partial<CreateBadgeData>): Promise<void>;
+    /**
+     * Met à jour le snapshot du badge dans la colonne JSON `badges` de tous les utilisateurs
+     * qui possèdent ce badge, afin que les changements d'icône/nom/couleur soient reflétés.
+     */
+    private syncBadgeToUsers;
     toggleBadgeStatus(badgeId: string, isActive: boolean): Promise<void>;
     deleteCustomBadge(badgeId: string): Promise<void>;
     getAllUsers(limit?: number, offset?: number): Promise<UserAdminData[]>;
     searchUsers(query: string, limit?: number): Promise<UserAdminData[]>;
-    updateUserRole(userId: string, role: 'user' | 'moderator' | 'admin'): Promise<void>;
+    updateUserRole(userId: string, role: 'user' | 'moderator' | 'admin' | 'support_l1' | 'support_l2' | 'technician'): Promise<void>;
     getUserStats(): Promise<{
         totalUsers: number;
         onlineUsers: number;
@@ -72,6 +77,23 @@ export declare class AdminService {
     verifyTurnstileToken(token: string): Promise<boolean>;
     private formatBadge;
     private formatUserAdmin;
+    getChangelogs(limit?: number, offset?: number): Promise<any[]>;
+    createChangelog(data: {
+        version?: string;
+        title: string;
+        content: string;
+        type: 'feature' | 'fix' | 'improvement' | 'security' | 'breaking' | 'news';
+        bannerUrl?: string | null;
+        createdBy: string;
+    }): Promise<any>;
+    updateChangelog(changelogId: string, data: {
+        version?: string;
+        title?: string;
+        content?: string;
+        type?: string;
+        bannerUrl?: string | null;
+    }): Promise<void>;
+    deleteChangelog(changelogId: string): Promise<void>;
 }
 export declare const adminService: AdminService;
 //# sourceMappingURL=admin.service.d.ts.map

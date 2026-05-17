@@ -6,15 +6,47 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.userController = exports.UserController = void 0;
 const users_service_1 = require("../services/users.service");
 const logger_1 = require("../utils/logger");
+const database_1 = require("../database");
 const userService = new users_service_1.UserService();
 class UserController {
+    // Récupérer la clé publique E2EE d'un utilisateur
+    async getPublicKey(req, res) {
+        try {
+            const { userId } = req.params;
+            const db = (0, database_1.getDatabaseClient)();
+            const [rows] = await db.query('SELECT public_key FROM users WHERE id = ?', [userId]);
+            const users = rows;
+            if (users.length === 0 || !users[0].public_key) {
+                return res.status(404).json({ error: 'Clé publique introuvable' });
+            }
+            res.json({ publicKey: users[0].public_key });
+        }
+        catch (error) {
+            logger_1.logger.error('Erreur récupération clé publique:', error);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
+    }
     // Récupérer un utilisateur par ID
     async getUser(req, res) {
         try {
             const { userId } = req.params;
+            // L'ID du viewer peut venir de x-user-id (gateway) ou du query param
+            const viewerId = req.userId || req.headers['x-user-id'] || req.query.viewerId;
             const user = await userService.findById(userId);
             if (!user) {
                 return res.status(404).json({ error: 'Utilisateur non trouvé' });
+            }
+            // Vérifier si le viewer est bloqué par cet utilisateur → 404 anonyme
+            if (viewerId && viewerId !== userId) {
+                const blocked = await userService.isBlockedBy(viewerId, userId);
+                if (blocked) {
+                    return res.status(404).json({ error: 'Utilisateur non trouvé' });
+                }
+                // Masquer le statut en ligne si l'utilisateur a caché son activité au viewer
+                const activityHidden = await userService.isActivityHiddenFrom(userId, viewerId);
+                if (activityHidden) {
+                    return res.json({ ...user, status: 'offline', isOnline: false });
+                }
             }
             res.json(user);
         }
@@ -62,7 +94,7 @@ class UserController {
             if (req.userId !== userId) {
                 return res.status(403).json({ error: 'Non autorisé' });
             }
-            const { displayName, avatarUrl, bannerUrl, bio, cardColor, showBadges, tutorialCompleted } = req.body;
+            const { displayName, avatarUrl, bannerUrl, bio, cardColor, showBadges, hiddenBadgeIds, tutorialCompleted } = req.body;
             await userService.updateProfile(userId, {
                 displayName,
                 avatarUrl,
@@ -70,9 +102,11 @@ class UserController {
                 bio,
                 cardColor,
                 showBadges,
+                hiddenBadgeIds,
                 tutorialCompleted,
             });
-            res.json({ success: true });
+            const updatedUser = await userService.findById(userId);
+            res.json({ success: true, data: updatedUser });
         }
         catch (error) {
             logger_1.logger.error('Erreur mise à jour profil:', error);
@@ -83,12 +117,31 @@ class UserController {
     async updateStatus(req, res) {
         try {
             const { userId } = req.params;
-            const { status } = req.body;
-            await userService.updateStatus(userId, status);
+            // Vérifier que l'utilisateur modifie son propre statut
+            if (req.userId !== userId) {
+                return res.status(403).json({ error: 'Non autorisé' });
+            }
+            const { status, customStatus, text, emoji } = req.body;
+            const resolvedText = text ?? customStatus;
+            const resolvedEmoji = emoji ?? null;
+            await userService.updateStatus(userId, status, resolvedText, resolvedEmoji);
             res.json({ success: true });
         }
         catch (error) {
             logger_1.logger.error('Erreur mise à jour statut:', error);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
+    }
+    // Mettre à jour le statut personnalisé
+    async updateCustomStatus(req, res) {
+        try {
+            const { userId } = req.params;
+            const { customStatus } = req.body;
+            await userService.updateCustomStatus(userId, customStatus ?? null);
+            res.json({ success: true });
+        }
+        catch (error) {
+            logger_1.logger.error('Erreur mise à jour statut personnalisé:', error);
             res.status(500).json({ error: 'Erreur serveur' });
         }
     }
@@ -141,8 +194,8 @@ class UserController {
             if (req.userId !== userId) {
                 return res.status(403).json({ error: 'Non autorisé' });
             }
-            const { currentPassword, newPassword } = req.body;
-            const result = await userService.changePassword(userId, currentPassword, newPassword);
+            const { currentPassword, newPassword, encryptedPrivateKey, keySalt } = req.body;
+            const result = await userService.changePassword(userId, currentPassword, newPassword, encryptedPrivateKey, keySalt);
             if (!result.success) {
                 return res.status(400).json({ error: result.error });
             }
@@ -150,6 +203,38 @@ class UserController {
         }
         catch (error) {
             logger_1.logger.error('Erreur changement mot de passe:', error);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
+    }
+    // Vérifier la disponibilité d'un nom d'utilisateur
+    async checkUsernameAvailable(req, res) {
+        try {
+            const { username } = req.params;
+            const available = await userService.checkUsernameAvailable(username);
+            res.json({ available });
+        }
+        catch (error) {
+            logger_1.logger.error('Erreur vérification username:', error);
+            res.status(500).json({ error: 'Erreur serveur' });
+        }
+    }
+    // Changer le nom d'utilisateur
+    async changeUsername(req, res) {
+        try {
+            const { userId } = req.params;
+            if (req.userId !== userId) {
+                return res.status(403).json({ error: 'Non autorisé' });
+            }
+            const { newUsername, password } = req.body;
+            const result = await userService.changeUsername(userId, newUsername, password);
+            if (!result.success) {
+                return res.status(400).json({ error: result.error });
+            }
+            const updatedUser = await userService.findById(userId);
+            res.json({ success: true, data: updatedUser });
+        }
+        catch (error) {
+            logger_1.logger.error('Erreur changement username:', error);
             res.status(500).json({ error: 'Erreur serveur' });
         }
     }
@@ -171,8 +256,9 @@ class UserController {
         try {
             const { userId } = req.params;
             const { badgeType } = req.body;
-            // TODO: Vérifier que l'utilisateur est admin
-            // Pour le moment, on autorise pour le développement
+            if (req.userRole !== 'admin') {
+                return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+            }
             await userService.addBadge(userId, badgeType);
             res.json({ success: true });
         }
@@ -185,7 +271,9 @@ class UserController {
     async removeBadge(req, res) {
         try {
             const { userId, badgeId } = req.params;
-            // TODO: Vérifier que l'utilisateur est admin
+            if (req.userRole !== 'admin') {
+                return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+            }
             await userService.removeBadge(userId, badgeId);
             res.json({ success: true });
         }

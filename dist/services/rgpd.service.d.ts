@@ -18,7 +18,7 @@ export declare class RgpdService {
     private get db();
     private get redis();
     exportUserData(userId: string): Promise<UserDataExport>;
-    requestDeletion(userId: string): Promise<{
+    requestDeletion(userId: string, deleteMessages?: boolean): Promise<{
         scheduledDeletionAt: Date;
     }>;
     cancelDeletion(userId: string): Promise<void>;

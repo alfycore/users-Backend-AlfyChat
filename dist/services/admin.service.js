@@ -73,6 +73,49 @@ class AdminService {
         if (updates.length > 0) {
             params.push(badgeId);
             await this.db.execute(`UPDATE custom_badges SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`, params);
+            // Propager les changements aux utilisateurs qui possèdent ce badge
+            await this.syncBadgeToUsers(badgeId);
+        }
+    }
+    /**
+     * Met à jour le snapshot du badge dans la colonne JSON `badges` de tous les utilisateurs
+     * qui possèdent ce badge, afin que les changements d'icône/nom/couleur soient reflétés.
+     */
+    async syncBadgeToUsers(badgeId) {
+        const badge = await this.getCustomBadge(badgeId);
+        if (!badge)
+            return;
+        // Récupérer tous les utilisateurs qui ont ce badge dans leur JSON
+        const [rows] = await this.db.query(`SELECT id, badges FROM users WHERE JSON_CONTAINS(badges, JSON_OBJECT('id', ?))`, [badgeId]);
+        const users = rows;
+        for (const user of users) {
+            let badges = [];
+            try {
+                badges = typeof user.badges === 'string' ? JSON.parse(user.badges) : (user.badges || []);
+            }
+            catch {
+                badges = [];
+            }
+            const updated = badges.map((b) => {
+                if (b.id === badgeId) {
+                    return {
+                        ...b,
+                        name: badge.name,
+                        icon: badge.iconValue,
+                        iconType: badge.iconType,
+                        iconValue: badge.iconValue,
+                        color: badge.color,
+                    };
+                }
+                return b;
+            });
+            await this.db.execute('UPDATE users SET badges = ? WHERE id = ?', [JSON.stringify(updated), user.id]);
+            // Invalider le cache Redis
+            try {
+                const redis = (0, redis_1.getRedisClient)();
+                await redis.del(`user:${user.id}`);
+            }
+            catch { /* ignore */ }
         }
     }
     async toggleBadgeStatus(badgeId, isActive) {
@@ -326,6 +369,52 @@ class AdminService {
             createdAt: row.created_at,
             lastSeenAt: row.last_seen_at,
         };
+    }
+    // ============ CHANGELOGS ============
+    async getChangelogs(limit = 50, offset = 0) {
+        const [rows] = await this.db.query(`SELECT c.*, u.username as author_username, u.display_name as author_display_name
+       FROM changelogs c
+       LEFT JOIN users u ON c.created_by = u.id
+       ORDER BY c.created_at DESC
+       LIMIT ${limit} OFFSET ${offset}`);
+        return rows;
+    }
+    async createChangelog(data) {
+        const id = (0, uuid_1.v4)();
+        await this.db.execute(`INSERT INTO changelogs (id, version, title, content, type, banner_url, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`, [id, data.version ?? '', data.title, data.content, data.type, data.bannerUrl ?? null, data.createdBy]);
+        const [rows] = await this.db.query(`SELECT * FROM changelogs WHERE id = ?`, [id]);
+        return rows[0];
+    }
+    async updateChangelog(changelogId, data) {
+        const parts = [];
+        const values = [];
+        if (data.version !== undefined) {
+            parts.push('version = ?');
+            values.push(data.version);
+        }
+        if (data.title !== undefined) {
+            parts.push('title = ?');
+            values.push(data.title);
+        }
+        if (data.content !== undefined) {
+            parts.push('content = ?');
+            values.push(data.content);
+        }
+        if (data.type !== undefined) {
+            parts.push('type = ?');
+            values.push(data.type);
+        }
+        if (data.bannerUrl !== undefined) {
+            parts.push('banner_url = ?');
+            values.push(data.bannerUrl);
+        }
+        if (!parts.length)
+            return;
+        values.push(changelogId);
+        await this.db.execute(`UPDATE changelogs SET ${parts.join(', ')} WHERE id = ?`, values);
+    }
+    async deleteChangelog(changelogId) {
+        await this.db.execute(`DELETE FROM changelogs WHERE id = ?`, [changelogId]);
     }
 }
 exports.AdminService = AdminService;
