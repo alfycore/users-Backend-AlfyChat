@@ -177,10 +177,6 @@ pushRouter.post('/send', async (req, res) => {
     return res.status(403).json({ error: 'Accès refusé' });
   }
 
-  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
-    return res.status(503).json({ error: 'Web Push non configuré (VAPID manquant)' });
-  }
-
   try {
     const { userId, title, body, url, type, conversationKey } = req.body as {
       userId?: string;
@@ -242,9 +238,13 @@ pushRouter.post('/send', async (req, res) => {
     }
 
     // ── VAPID Web Push ──
+    if (vapidRows.length > 0 && (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY)) {
+      console.warn('[push/send] VAPID non configuré — skip %d subscription(s) VAPID', vapidRows.length);
+    }
+
     const vapidPayload = JSON.stringify({ title: title || 'AlfyChat', body: body || '', url: url || '/', type: type || 'message', conversationKey: conversationKey || '' });
 
-    for (const sub of vapidRows) {
+    for (const sub of (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY ? vapidRows : [])) {
       if (!sub.p256dh || !sub.auth) continue;
       sendJobs.push(
         webpush.sendNotification(
