@@ -57,6 +57,23 @@ app.use('/users/support', publicSupportRouter);
 app.use('/admin/support', adminSupportRouter);
 app.use('/push', pushRouter);
 
+// ── Endpoint interne — stats publiques (protégé par x-internal-secret) ───────
+app.get('/internal/stats', async (req, res) => {
+  const secret = req.headers['x-internal-secret'] as string | undefined;
+  const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
+  if (!secret || secret !== INTERNAL_SECRET) {
+    return res.status(401).json({ error: 'Non autorisé' });
+  }
+  try {
+    const db = getDatabaseClient();
+    const [[totalRow]] = await db.query('SELECT COUNT(*) as count FROM users') as any;
+    const [[onlineRow]] = await db.query('SELECT COUNT(*) as count FROM users WHERE is_online = TRUE') as any;
+    res.json({ totalUsers: totalRow.count, onlineUsers: onlineRow.count });
+  } catch {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'users' });
