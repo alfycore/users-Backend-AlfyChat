@@ -7,7 +7,7 @@ import jwt from 'jsonwebtoken';
 import { timingSafeEqual } from 'crypto';
 import { getRedisClient } from '../redis';
 
-function safeCompare(a: string, b: string): boolean {
+function safeCompare(a: string | undefined, b: string | undefined): boolean {
   if (!a || !b) return false;
   const bufA = Buffer.from(a);
   const bufB = Buffer.from(b);
