@@ -20,6 +20,8 @@ import { helpdeskRouter } from './routes/helpdesk';
 import { publicHelpdeskRouter } from './routes/public-helpdesk';
 import { publicSupportRouter } from './routes/support-public';
 import { adminSupportRouter } from './routes/admin-support';
+import { moderationRouter } from './routes/moderation';
+import { moderationService } from './services/moderation.service';
 import { startServiceRegistration, serviceMetricsMiddleware, collectServiceMetrics } from './utils/service-client';
 import { getDatabaseClient, runMigrations } from './database';
 import { getRedisClient } from './redis';
@@ -43,6 +45,11 @@ const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,
   message: { error: 'Trop de requêtes, réessayez plus tard' },
+  // La connexion par QR sonde /auth/remote/poll toutes les 2 s pendant 120 s,
+  // soit ~60 appels : sous ce plafond de 100, deux tentatives suffiraient à
+  // bloquer la connexion classique de l'utilisateur. Ces routes portent leur
+  // propre limiteur, plus adapté (voir routes/auth.ts).
+  skip: (req) => req.path.startsWith('/remote/'),
 });
 app.use('/auth', limiter);
 
@@ -50,6 +57,8 @@ app.use('/auth', limiter);
 app.use('/users', usersRouter);
 app.use('/auth', authRouter);
 app.use('/rgpd', rgpdRouter);
+// Doit précéder /admin pour que /admin/moderation ne soit pas capté par adminRouter
+app.use('/admin/moderation', moderationRouter);
 app.use('/admin', adminRouter);
 app.use('/users/keys', keysRouter);
 app.use('/helpdesk/public', publicHelpdeskRouter);
@@ -70,6 +79,21 @@ app.get('/internal/stats', async (req, res) => {
     const [[totalRow]] = await db.query('SELECT COUNT(*) as count FROM users') as any;
     const [[onlineRow]] = await db.query('SELECT COUNT(*) as count FROM users WHERE is_online = TRUE') as any;
     res.json({ totalUsers: totalRow.count, onlineUsers: onlineRow.count });
+  } catch {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ── Endpoint interne — statut de modération (protégé par x-internal-secret) ──
+// Utilisé par le gateway pour refuser les connexions WS des comptes bannis.
+app.get('/internal/moderation/:userId', async (req, res) => {
+  const secret = req.headers['x-internal-secret'] as string | undefined;
+  const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
+  if (!secret || secret !== INTERNAL_SECRET) {
+    return res.status(401).json({ error: 'Non autorisé' });
+  }
+  try {
+    res.json(await moderationService.getStatus(req.params.userId));
   } catch {
     res.status(500).json({ error: 'Erreur serveur' });
   }
@@ -104,6 +128,9 @@ async function start() {
 
     // Migrations automatiques au démarrage
     await runMigrations(db);
+
+    // Charger les termes interdits personnalisés dans le filtre de pseudos
+    await moderationService.reloadTerms();
 
     // Connexion à Redis
     getRedisClient({

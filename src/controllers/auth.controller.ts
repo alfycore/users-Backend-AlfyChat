@@ -136,6 +136,9 @@ export class AuthController {
         if (result.emailNotVerified) {
           return res.status(403).json({ emailNotVerified: true });
         }
+        if (result.banned) {
+          return res.status(403).json({ error: result.error, banned: true });
+        }
         return res.status(401).json({ error: result.error });
       }
 

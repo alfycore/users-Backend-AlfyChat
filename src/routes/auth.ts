@@ -4,7 +4,9 @@
 
 import { Router } from 'express';
 import { body } from 'express-validator';
+import rateLimit from 'express-rate-limit';
 import { authController } from '../controllers/auth.controller';
+import { remoteAuthController } from '../controllers/remote-auth.controller';
 import { authMiddleware } from '../middleware/auth';
 import { validateRequest } from '../middleware/validate';
 
@@ -67,6 +69,62 @@ authRouter.post('/logout-all',
 authRouter.get('/verify',
   authMiddleware,
   authController.verify.bind(authController)
+);
+
+// ==========================================
+// CONNEXION À DISTANCE PAR QR CODE
+// ==========================================
+// Le poste appelle `init` puis sonde `poll` ; le téléphone déjà connecté
+// enchaîne `claim` → `approve` / `deny`.
+
+// Créer un code : action coûteuse et publique, donc bridée serrée.
+const remoteInitLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 20,
+  message: { error: 'Trop de codes générés, patientez un instant' },
+});
+
+// Sondage : un code vit 120 s et est interrogé toutes les 2 s, soit ~60 appels.
+// Le plafond global de /auth (100 / 15 min) l'étoufferait — d'où ce quota
+// dédié, plus large, et l'exclusion correspondante dans src/index.ts.
+const remotePollLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 400,
+  message: { error: 'Trop de requêtes' },
+});
+
+authRouter.post('/remote/init',
+  remoteInitLimiter,
+  body('ephemeralPublicKey').isString().isLength({ min: 1, max: 2048 }),
+  validateRequest,
+  remoteAuthController.init.bind(remoteAuthController)
+);
+
+authRouter.get('/remote/poll',
+  remotePollLimiter,
+  remoteAuthController.poll.bind(remoteAuthController)
+);
+
+authRouter.post('/remote/claim',
+  authMiddleware,
+  body('deviceCode').isString().isLength({ min: 32, max: 32 }),
+  validateRequest,
+  remoteAuthController.claim.bind(remoteAuthController)
+);
+
+authRouter.post('/remote/approve',
+  authMiddleware,
+  body('deviceCode').isString().isLength({ min: 32, max: 32 }),
+  body('encryptedKeyPayload').optional().isString().isLength({ max: 8192 }),
+  validateRequest,
+  remoteAuthController.approve.bind(remoteAuthController)
+);
+
+authRouter.post('/remote/deny',
+  authMiddleware,
+  body('deviceCode').isString().isLength({ min: 32, max: 32 }),
+  validateRequest,
+  remoteAuthController.deny.bind(remoteAuthController)
 );
 
 // ==========================================

@@ -46,6 +46,8 @@ export interface UserPreferences {
   // Layout / appearance
   layoutPrefs?: Record<string, unknown>;
   wallpaper?: string | null;
+  /** Thème, messages, boîte de discussion, recherche, accessibilité. */
+  appPrefs?: Record<string, unknown>;
 }
 
 export interface Session {

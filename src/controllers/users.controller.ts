@@ -3,11 +3,12 @@
 // ==========================================
 
 import { Request, Response } from 'express';
-import { UserService } from '../services/users.service';
+import { UserService, ProfanityError } from '../services/users.service';
 import { logger } from '../utils/logger';
 import { AuthRequest } from '../types/express';
 import { BadgeType } from '../types/badges';
 import { getDatabaseClient } from '../database';
+import { checkUsername } from '../utils/username-filter';
 
 const userService = new UserService();
 
@@ -127,6 +128,9 @@ export class UserController {
       const updatedUser = await userService.findById(userId);
       res.json({ success: true, data: updatedUser });
     } catch (error) {
+      if (error instanceof ProfanityError) {
+        return res.status(400).json({ error: error.message });
+      }
       logger.error('Erreur mise à jour profil:', error);
       res.status(500).json({ error: 'Erreur serveur' });
     }
@@ -241,6 +245,14 @@ export class UserController {
   async checkUsernameAvailable(req: Request, res: Response) {
     try {
       const { username } = req.params;
+
+      // Un pseudo refusé par le filtre est signalé comme indisponible,
+      // avec le motif, pour que le formulaire d'inscription réagisse en direct.
+      const filter = checkUsername(username);
+      if (!filter.ok) {
+        return res.json({ available: false, blocked: true, reason: filter.reason });
+      }
+
       const available = await userService.checkUsernameAvailable(username);
       res.json({ available });
     } catch (error) {

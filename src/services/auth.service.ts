@@ -11,6 +11,7 @@ import { getRedisClient } from '../redis';
 import { UserService } from './users.service';
 import { emailService } from './email.service';
 import { twoFactorService } from './twofa.service';
+import { checkUsername } from '../utils/username-filter';
 import { User } from '../types/user';
 
 const userService = new UserService();
@@ -37,6 +38,7 @@ interface AuthResult {
   encryptedPrivateKey?: string;
   emailNotVerified?: boolean;
   keyMissing?: boolean;
+  banned?: boolean;
 }
 
 export class AuthService {
@@ -73,6 +75,20 @@ export class AuthService {
     encryptedPrivateKey?: string;
     keySalt?: string;
   }, ipAddress?: string, userAgent?: string): Promise<AuthResult> {
+    // Filtrer les pseudos injurieux ou usurpant l'identité du staff
+    const usernameCheck = checkUsername(data.username);
+    if (!usernameCheck.ok) {
+      return { success: false, error: usernameCheck.reason };
+    }
+
+    // Le nom affiché est libre en caractères mais soumis au même filtre
+    if (data.displayName && data.displayName !== data.username) {
+      const displayCheck = checkUsername(data.displayName);
+      if (!displayCheck.ok) {
+        return { success: false, error: displayCheck.reason };
+      }
+    }
+
     // Vérifier si l'email existe
     const existingEmail = await userService.findByEmail(data.email);
     if (existingEmail) {
@@ -143,6 +159,12 @@ export class AuthService {
       return { success: false, error: 'Email ou mot de passe incorrect' };
     }
 
+    // Compte banni — refuser avant toute autre étape
+    const ban = await this.checkBan(dbUser.id);
+    if (ban) {
+      return { success: false, error: ban, banned: true };
+    }
+
     // Email non vérifié
     const isVerified = dbUser.email_verified === 1 || dbUser.email_verified === true;
     if (!isVerified) {
@@ -206,6 +228,13 @@ export class AuthService {
     }
 
     const dbUser = users[0];
+
+    // Le ban a pu tomber entre la saisie du mot de passe et celle du code 2FA
+    const ban = await this.checkBan(dbUser.id);
+    if (ban) {
+      return { success: false, error: ban, banned: true };
+    }
+
     const tokens = await this.generateTokens(dbUser.id, ipAddress, userAgent);
 
     const user: User = {
@@ -333,6 +362,36 @@ export class AuthService {
     return userService.findById(userId);
   }
 
+  /**
+   * Retourne le message de bannissement si le compte est banni, sinon null.
+   * Lit directement les sanctions actives : les colonnes dénormalisées de
+   * `users` peuvent référencer un ban temporaire déjà expiré.
+   */
+  private async checkBan(userId: string): Promise<string | null> {
+    try {
+      const [rows] = await this.db.query(
+        `SELECT reason, expires_at FROM moderation_sanctions
+         WHERE user_id = ? AND type = 'ban' AND revoked = FALSE
+           AND (expires_at IS NULL OR expires_at > NOW())
+         ORDER BY expires_at IS NULL DESC, expires_at DESC
+         LIMIT 1`,
+        [userId]
+      );
+      const bans = rows as any[];
+      if (bans.length === 0) return null;
+
+      const { reason, expires_at } = bans[0];
+      if (!expires_at) {
+        return `Ce compte est banni définitivement. Motif : ${reason}`;
+      }
+      const until = new Date(expires_at).toLocaleString('fr-FR');
+      return `Ce compte est suspendu jusqu'au ${until}. Motif : ${reason}`;
+    } catch {
+      // Table absente ou DB indisponible — ne pas bloquer la connexion
+      return null;
+    }
+  }
+
   // Générer les tokens
   private async generateTokens(userId: string, ipAddress?: string | null, userAgent?: string | null) {
     // Récupérer le rôle pour l'inclure dans le JWT
@@ -370,6 +429,22 @@ export class AuthService {
       expiresIn: this.ACCESS_TOKEN_EXPIRY_SECONDS,
       sessionId,
     };
+  }
+
+  /**
+   * Émet une session pour un compte dont l'identité a déjà été prouvée par un
+   * AUTRE appareil authentifié (connexion par QR code).
+   *
+   * Ne fait aucune vérification d'identité : l'appelant est responsable de
+   * l'avoir établie. Réservé à `remote-auth.service`, qui exige une
+   * approbation explicite depuis un appareil déjà connecté.
+   */
+  async issueTokensForUser(
+    userId: string,
+    ipAddress?: string | null,
+    userAgent?: string | null,
+  ) {
+    return this.generateTokens(userId, ipAddress, userAgent);
   }
 
   // Lister les sessions actives d'un utilisateur

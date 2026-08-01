@@ -7,6 +7,15 @@ import { getDatabaseClient } from '../database';
 import { getRedisClient } from '../redis';
 import { User, UserPreferences, UserStatus } from '../types/user';
 import { UserBadge, BadgeType, BADGE_DEFINITIONS } from '../types/badges';
+import { checkUsername } from '../utils/username-filter';
+
+/** Erreur levée quand un texte de profil est refusé par le filtre de modération */
+export class ProfanityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProfanityError';
+  }
+}
 
 export class UserService {
   private get db() {
@@ -145,6 +154,10 @@ export class UserService {
     const params: any[] = [];
 
     if (data.displayName !== undefined) {
+      const filter = checkUsername(data.displayName);
+      if (!filter.ok) {
+        throw new ProfanityError(filter.reason ?? 'Nom affiché refusé');
+      }
       updates.push('display_name = ?');
       params.push(data.displayName);
     }
@@ -261,9 +274,10 @@ export class UserService {
       vacationEnd: 'vacation_end',
       layoutPrefs: 'layout_prefs',
       wallpaper: 'wallpaper',
+      appPrefs: 'app_prefs',
     };
 
-    const jsonFields = new Set(['interests', 'notifKeywords', 'layoutPrefs']);
+    const jsonFields = new Set(['interests', 'notifKeywords', 'layoutPrefs', 'appPrefs']);
     const updates: string[] = [];
     const params: any[] = [];
 
@@ -303,6 +317,12 @@ export class UserService {
     newUsername: string,
     password: string
   ): Promise<{ success: boolean; error?: string }> {
+    // Filtrer les pseudos injurieux ou réservés
+    const filter = checkUsername(newUsername);
+    if (!filter.ok) {
+      return { success: false, error: filter.reason };
+    }
+
     // Vérifier le mot de passe
     const [rows] = await this.db.query(
       'SELECT password_hash FROM users WHERE id = ?',
@@ -565,6 +585,7 @@ export class UserService {
       vacationEnd: formatDate(row.vacation_end),
       layoutPrefs: parseJsonField(row.layout_prefs),
       wallpaper: row.wallpaper ?? null,
+      appPrefs: parseJsonField(row.app_prefs),
     };
   }
 

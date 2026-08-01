@@ -240,6 +240,7 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
     `ALTER TABLE user_preferences ADD COLUMN vacation_end DATE NULL`,
     `ALTER TABLE user_preferences ADD COLUMN layout_prefs JSON NULL`,
     `ALTER TABLE user_preferences ADD COLUMN wallpaper TEXT NULL`,
+    `ALTER TABLE user_preferences ADD COLUMN app_prefs JSON NULL`,
   ];
   for (const sql of prefsAlterations) {
     try {
@@ -254,6 +255,62 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
     await db.execute(`ALTER TABLE custom_badges MODIFY COLUMN icon_type ENUM('bootstrap', 'svg', 'flaticon') DEFAULT 'bootstrap'`);
   } catch {
     // ignore si déjà à jour
+  }
+
+  // ==========================================
+  // MODÉRATION GLOBALE — Sanctions et termes interdits
+  // ==========================================
+
+  // Historique complet des sanctions (une ligne par action, jamais supprimée)
+  await db.execute(
+    `CREATE TABLE IF NOT EXISTS moderation_sanctions (
+      id VARCHAR(36) PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      type ENUM('warn', 'mute', 'kick', 'ban') NOT NULL,
+      reason TEXT NOT NULL,
+      expires_at DATETIME NULL DEFAULT NULL,
+      issued_by VARCHAR(36) NULL,
+      revoked BOOLEAN DEFAULT FALSE,
+      revoked_by VARCHAR(36) NULL,
+      revoked_at TIMESTAMP NULL DEFAULT NULL,
+      revoke_reason TEXT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (issued_by) REFERENCES users(id) ON DELETE SET NULL,
+      INDEX idx_user_sanctions (user_id, type, revoked),
+      INDEX idx_expires (expires_at),
+      INDEX idx_created (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  // Termes interdits additionnels pour le filtre de pseudos (éditables par le staff)
+  await db.execute(
+    `CREATE TABLE IF NOT EXISTS moderation_terms (
+      id VARCHAR(36) PRIMARY KEY,
+      term VARCHAR(100) NOT NULL,
+      match_type ENUM('substring', 'word', 'exact') DEFAULT 'word',
+      created_by VARCHAR(36) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_term (term),
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  // Colonnes dénormalisées sur users — évitent un JOIN à chaque vérification
+  const moderationAlterations = [
+    `ALTER TABLE users ADD COLUMN is_banned BOOLEAN DEFAULT FALSE`,
+    `ALTER TABLE users ADD COLUMN banned_until DATETIME NULL DEFAULT NULL`,
+    `ALTER TABLE users ADD COLUMN ban_reason TEXT NULL DEFAULT NULL`,
+    `ALTER TABLE users ADD COLUMN muted_until DATETIME NULL DEFAULT NULL`,
+    `ALTER TABLE users ADD COLUMN mute_reason TEXT NULL DEFAULT NULL`,
+    `ALTER TABLE users ADD INDEX idx_is_banned (is_banned)`,
+  ];
+  for (const sql of moderationAlterations) {
+    try {
+      await db.execute(sql);
+    } catch {
+      // Ignorer si la colonne/index existe déjà
+    }
   }
 
   // ==========================================
