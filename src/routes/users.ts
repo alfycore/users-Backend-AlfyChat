@@ -32,6 +32,23 @@ usersRouter.get('/me',
   authController.me.bind(authController)
 );
 
+// Mettre à jour SON PROPRE profil (doit être avant /:userId — sinon Express
+// route "me" vers PATCH /:userId avec userId="me" littéral, qui ne peut
+// jamais correspondre à req.userId : la requête échouait alors avec un 403
+// pour absolument tout le monde, à chaque tentative d'enregistrement).
+usersRouter.patch('/me',
+  authMiddleware,
+  body('displayName').optional().isLength({ max: 64 }),
+  body('avatarUrl').optional().isString(),
+  body('bannerUrl').optional().isString(),
+  body('bio').optional().isLength({ max: 500 }),
+  body('cardColor').optional().isString().isLength({ max: 7 }),
+  body('showBadges').optional().isBoolean(),
+  body('hiddenBadgeIds').optional().isArray(),
+  validateRequest,
+  userController.updateOwnProfile.bind(userController)
+);
+
 // Rechercher des utilisateurs
 usersRouter.get('/search',
   query('q').isString().isLength({ min: 1 }),

@@ -128,13 +128,16 @@ export class AuthService {
     // Envoyer l'email de vérification (non bloquant)
     this.sendEmailVerification(userId, data.email, data.username || data.displayName).catch(() => {});
 
-    // Générer les tokens
-    const tokens = await this.generateTokens(userId, ipAddress, userAgent);
-
+    // Ne PAS générer de session ici : un compte fraîchement créé n'a jamais son
+    // email vérifié (`email_verified` vaut FALSE par défaut en base), donc le
+    // délivrer connecté reviendrait à contourner la vérification obligatoire
+    // déjà appliquée sur /login. Le frontend retombe sur login(), qui applique
+    // exactement le même contrôle `emailNotVerified` que pour une connexion
+    // classique.
     return {
       success: true,
       user,
-      tokens,
+      emailNotVerified: true,
     };
   }
 

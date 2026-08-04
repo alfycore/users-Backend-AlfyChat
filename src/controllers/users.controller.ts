@@ -104,6 +104,33 @@ export class UserController {
   }
 
   // Mettre à jour le profil
+  /** Variante de updateProfile pour PATCH /me : la cible est toujours l'appelant. */
+  async updateOwnProfile(req: AuthRequest, res: Response) {
+    try {
+      const userId = req.userId!;
+      const { displayName, avatarUrl, bannerUrl, bio, cardColor, showBadges, hiddenBadgeIds, tutorialCompleted } = req.body;
+      await userService.updateProfile(userId, {
+        displayName,
+        avatarUrl,
+        bannerUrl,
+        bio,
+        cardColor,
+        showBadges,
+        hiddenBadgeIds,
+        tutorialCompleted,
+      });
+
+      const updatedUser = await userService.findById(userId);
+      res.json({ success: true, data: updatedUser });
+    } catch (error) {
+      if (error instanceof ProfanityError) {
+        return res.status(400).json({ error: error.message });
+      }
+      logger.error('Erreur mise à jour profil:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
+
   async updateProfile(req: AuthRequest, res: Response) {
     try {
       const { userId } = req.params;
