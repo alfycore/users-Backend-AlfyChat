@@ -20,6 +20,7 @@ import { helpdeskRouter } from './routes/helpdesk';
 import { publicHelpdeskRouter } from './routes/public-helpdesk';
 import { publicSupportRouter } from './routes/support-public';
 import { adminSupportRouter } from './routes/admin-support';
+import { adminDevRouter } from './routes/admin-dev';
 import { moderationRouter } from './routes/moderation';
 import { moderationService } from './services/moderation.service';
 import { startServiceRegistration, serviceMetricsMiddleware, collectServiceMetrics } from './utils/service-client';
@@ -57,8 +58,9 @@ app.use('/auth', limiter);
 app.use('/users', usersRouter);
 app.use('/auth', authRouter);
 app.use('/rgpd', rgpdRouter);
-// Doit précéder /admin pour que /admin/moderation ne soit pas capté par adminRouter
+// Doit précéder /admin pour que /admin/moderation et /admin/dev ne soient pas captés par adminRouter
 app.use('/admin/moderation', moderationRouter);
+app.use('/admin/dev', adminDevRouter);
 app.use('/admin', adminRouter);
 app.use('/users/keys', keysRouter);
 app.use('/helpdesk/public', publicHelpdeskRouter);
@@ -66,6 +68,12 @@ app.use('/helpdesk', helpdeskRouter);
 app.use('/users/support', publicSupportRouter);
 app.use('/admin/support', adminSupportRouter);
 app.use('/push', pushRouter);
+// Le gateway ne proxifie que `/api/users/*` (il retire juste le préfixe `/api`) :
+// sans ce second montage, `/api/users/push/...` retombait sur usersRouter, qui
+// n'a aucune route push, et finissait en 404 — les abonnements aux
+// notifications étaient donc injoignables depuis le web comme depuis le mobile.
+// Même procédé que `/users/keys` et `/users/support` ci-dessus.
+app.use('/users/push', pushRouter);
 
 // ── Endpoint interne — stats publiques (protégé par x-internal-secret) ───────
 app.get('/internal/stats', async (req, res) => {
