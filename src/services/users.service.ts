@@ -2,7 +2,7 @@
 // ALFYCHAT - SERVICE UTILISATEURS
 // ==========================================
 
-import bcrypt from 'bcryptjs';
+import { hashPassword, verifyPassword } from '../utils/password';
 import { getDatabaseClient } from '../database';
 import { getRedisClient } from '../redis';
 import { User, UserPreferences, UserStatus } from '../types/user';
@@ -332,7 +332,7 @@ export class UserService {
     if (users.length === 0) {
       return { success: false, error: 'Utilisateur non trouvé' };
     }
-    const isValid = await bcrypt.compare(password, users[0].password_hash);
+    const isValid = await verifyPassword(password, users[0].password_hash);
     if (!isValid) {
       return { success: false, error: 'Mot de passe incorrect' };
     }
@@ -371,12 +371,12 @@ export class UserService {
       return { success: false, error: 'Utilisateur non trouvé' };
     }
 
-    const isValid = await bcrypt.compare(currentPassword, users[0].password_hash);
+    const isValid = await verifyPassword(currentPassword, users[0].password_hash);
     if (!isValid) {
       return { success: false, error: 'Mot de passe actuel incorrect' };
     }
 
-    const newHash = await bcrypt.hash(newPassword, 12);
+    const newHash = await hashPassword(newPassword);
 
     // Update password hash + re-encrypted E2EE key if provided
     if (encryptedPrivateKey && keySalt) {

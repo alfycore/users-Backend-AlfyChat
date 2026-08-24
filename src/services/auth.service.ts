@@ -2,7 +2,7 @@
 // ALFYCHAT - SERVICE AUTHENTIFICATION
 // ==========================================
 
-import bcrypt from 'bcryptjs';
+import { hashPassword, verifyPassword, burnPasswordComparison } from '../utils/password';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
@@ -12,6 +12,7 @@ import { UserService } from './users.service';
 import { emailService } from './email.service';
 import { twoFactorService } from './twofa.service';
 import { checkUsername } from '../utils/username-filter';
+import { logger } from '../utils/logger';
 import { User } from '../types/user';
 
 const userService = new UserService();
@@ -102,7 +103,7 @@ export class AuthService {
     }
 
     // Hasher le mot de passe
-    const passwordHash = await bcrypt.hash(data.password, 12);
+    const passwordHash = await hashPassword(data.password);
 
     // Créer l'utilisateur
     const userId = uuidv4();
@@ -151,13 +152,18 @@ export class AuthService {
 
     const users = rows as any[];
     if (users.length === 0) {
+      // Consommer le même temps CPU qu'une vérification réelle : sans cela, une
+      // adresse inconnue répondait instantanément là où une adresse connue
+      // coûtait ~300 ms de bcrypt — un oracle d'existence de compte, malgré le
+      // message d'erreur identique.
+      await burnPasswordComparison(password);
       return { success: false, error: 'Email ou mot de passe incorrect' };
     }
 
     const dbUser = users[0];
 
     // Vérifier le mot de passe
-    const isValid = await bcrypt.compare(password, dbUser.password_hash);
+    const isValid = await verifyPassword(password, dbUser.password_hash);
     if (!isValid) {
       return { success: false, error: 'Email ou mot de passe incorrect' };
     }
@@ -389,9 +395,13 @@ export class AuthService {
       }
       const until = new Date(expires_at).toLocaleString('fr-FR');
       return `Ce compte est suspendu jusqu'au ${until}. Motif : ${reason}`;
-    } catch {
-      // Table absente ou DB indisponible — ne pas bloquer la connexion
-      return null;
+    } catch (err) {
+      // Un contrôle d'autorisation qui ne peut pas s'exécuter doit REFUSER.
+      // L'ancien `return null` (« ne pas bloquer la connexion ») rouvrait
+      // l'accès à tous les comptes bannis dès que la base devenait
+      // momentanément inaccessible.
+      logger.error('checkBan: vérification impossible, connexion refusée', { err });
+      return 'Vérification du compte impossible pour le moment. Réessayez dans quelques instants.';
     }
   }
 
@@ -637,7 +647,7 @@ export class AuthService {
       return { success: false, error: 'Lien invalide ou expiré.' };
     }
 
-    const passwordHash = await bcrypt.hash(newPassword, 12);
+    const passwordHash = await hashPassword(newPassword);
 
     // Mettre à jour le mot de passe et effacer les clés E2EE
     // (elles seront régénérées avec le nouveau mot de passe à la prochaine connexion)

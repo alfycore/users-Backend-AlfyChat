@@ -304,6 +304,10 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
     `ALTER TABLE users ADD COLUMN muted_until DATETIME NULL DEFAULT NULL`,
     `ALTER TABLE users ADD COLUMN mute_reason TEXT NULL DEFAULT NULL`,
     `ALTER TABLE users ADD INDEX idx_is_banned (is_banned)`,
+    // `refreshTokens()` fait `WHERE refresh_token = ?` sans index : un scan
+    // complet de `sessions` a chaque rafraichissement, soit toutes les 15 min
+    // pour chaque utilisateur actif.
+    `ALTER TABLE sessions ADD INDEX idx_refresh_token (refresh_token(191))`,
   ];
   for (const sql of moderationAlterations) {
     try {

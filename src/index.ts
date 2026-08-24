@@ -29,6 +29,7 @@ import { getRedisClient } from './redis';
 import { logger } from './utils/logger';
 import { authRouter } from './routes/auth';
 import { pushRouter } from './routes/push';
+import { passwordBackend } from './utils/password';
 const app = express();
 app.set('trust proxy', 1);
 
@@ -150,6 +151,7 @@ async function start() {
     const PORT = process.env.PORT || 3001;
     app.listen(PORT, () => {
       logger.info(`🚀 Service Users démarré sur le port ${PORT}`);
+      logger.info(`🔐 Hachage de mot de passe : ${passwordBackend}`);
       startServiceRegistration('users');
     });
   } catch (error) {
