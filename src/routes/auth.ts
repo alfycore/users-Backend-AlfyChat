@@ -19,7 +19,7 @@ authRouter.get('/register/settings', authController.getRegisterSettings.bind(aut
 authRouter.post('/register',
   body('email').isEmail().normalizeEmail(),
   body('username').isString().isLength({ min: 3, max: 32 }).matches(/^[a-zA-Z0-9_]+$/),
-  body('password').isString().isLength({ min: 8 }),
+  body('password').isString().isLength({ min: 8, max: 128 }),
   body('displayName').optional().isString().isLength({ max: 64 }),
   body('inviteCode').optional().isString(),
   body('turnstileToken').optional().isString(),
@@ -33,7 +33,7 @@ authRouter.post('/register',
 // Connexion
 authRouter.post('/login',
   body('email').isEmail().normalizeEmail(),
-  body('password').isString().isLength({ min: 1 }),
+  body('password').isString().isLength({ min: 1, max: 128 }),
   validateRequest,
   authController.login.bind(authController)
 );
@@ -160,7 +160,7 @@ authRouter.post('/forgot-password',
 // Appliquer le nouveau mot de passe
 authRouter.post('/reset-password',
   body('token').isString().isLength({ min: 1 }),
-  body('password').isString().isLength({ min: 8 }),
+  body('password').isString().isLength({ min: 8, max: 128 }),
   validateRequest,
   authController.resetPassword.bind(authController)
 );

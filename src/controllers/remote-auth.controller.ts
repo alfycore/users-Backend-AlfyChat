@@ -6,14 +6,7 @@ import { Request, Response } from 'express';
 import { remoteAuthService } from '../services/remote-auth.service';
 import { logger } from '../utils/logger';
 import { AuthRequest } from '../types/express';
-
-/** Normalise les adresses IPv4-mapped IPv6 (::ffff:1.2.3.4 → 1.2.3.4) */
-function normalizeIP(ip: string | undefined): string | null {
-  if (!ip) return null;
-  if (ip.startsWith('::ffff:')) return ip.slice(7);
-  if (ip === '::1') return '127.0.0.1';
-  return ip;
-}
+import { getClientIp } from '../utils/client-ip';
 
 const APP_URL = process.env.PUBLIC_APP_URL || 'https://alfychat.app';
 
@@ -28,7 +21,9 @@ export class RemoteAuthController {
 
       const result = await remoteAuthService.init({
         ephemeralPublicKey,
-        ip: normalizeIP(req.ip),
+        // IP réelle du poste (avant : celle du gateway, ce qui rendait inutile
+        // l'affichage d'origine censé déjouer l'hameçonnage par QR).
+        ip: getClientIp(req),
         userAgent: req.get('user-agent') ?? null,
         appUrl: APP_URL,
       });

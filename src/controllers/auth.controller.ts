@@ -8,17 +8,10 @@ import { AdminService } from '../services/admin.service';
 import { twoFactorService } from '../services/twofa.service';
 import { logger } from '../utils/logger';
 import { AuthRequest } from '../types/express';
+import { getClientIp } from '../utils/client-ip';
 
 const authService = new AuthService();
 const adminService = new AdminService();
-
-/** Normalise les adresses IPv4-mapped IPv6 (::ffff:1.2.3.4 → 1.2.3.4) */
-function normalizeIP(ip: string | undefined): string {
-  if (!ip) return 'inconnu';
-  if (ip.startsWith('::ffff:')) return ip.slice(7);
-  if (ip === '::1') return '127.0.0.1';
-  return ip;
-}
 
 export class AuthController {
   // Paramètres d'inscription publics
@@ -84,7 +77,7 @@ export class AuthController {
         ...(publicKey && { publicKey }),
         ...(encryptedPrivateKey && { encryptedPrivateKey }),
         ...(keySalt && { keySalt }),
-      }, normalizeIP(req.ip), req.get('user-agent'));
+      }, getClientIp(req), req.get('user-agent'));
 
       if (!result.success) {
         return res.status(400).json({ error: result.error });
@@ -130,7 +123,7 @@ export class AuthController {
         }
       }
 
-      const result = await authService.login(email, password, normalizeIP(req.ip), req.get('user-agent'));
+      const result = await authService.login(email, password, getClientIp(req), req.get('user-agent'));
 
       if (!result.success) {
         if (result.emailNotVerified) {
@@ -189,9 +182,11 @@ export class AuthController {
   async logout(req: AuthRequest, res: Response) {
     try {
       const { refreshToken } = req.body;
-      
-      if (refreshToken) {
-        await authService.logout(refreshToken);
+
+      // Uniquement une session de l'appelant (n'importe quel refresh token
+      // était révocable).
+      if (typeof refreshToken === 'string' && req.userId) {
+        await authService.logout(refreshToken, req.userId);
       }
 
       res.json({ success: true });
@@ -305,7 +300,7 @@ export class AuthController {
       if (!twoFactorToken || !code) {
         return res.status(400).json({ error: 'Données manquantes' });
       }
-      const result = await authService.loginWith2FA(twoFactorToken, code, normalizeIP(req.ip), req.get('user-agent'));
+      const result = await authService.loginWith2FA(twoFactorToken, code, getClientIp(req), req.get('user-agent'));
       if (!result.success) {
         return res.status(401).json({ error: result.error });
       }
@@ -342,11 +337,14 @@ export class AuthController {
       if (!req.userId) {
         return res.status(401).json({ error: 'Non authentifié' });
       }
-      const { publicKey, encryptedPrivateKey, keySalt } = req.body;
+      const { publicKey, encryptedPrivateKey, keySalt, password } = req.body;
       if (!publicKey || !encryptedPrivateKey || !keySalt) {
         return res.status(400).json({ error: 'Données manquantes' });
       }
-      await authService.saveUserKeys(req.userId, publicKey, encryptedPrivateKey, keySalt);
+      const result = await authService.saveUserKeys(req.userId, publicKey, encryptedPrivateKey, keySalt, password);
+      if (!result.success) {
+        return res.status(403).json({ error: result.error });
+      }
       res.json({ success: true });
     } catch (error) {
       logger.error('Erreur sauvegarde clés E2EE:', error);

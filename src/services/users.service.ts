@@ -49,7 +49,7 @@ export class UserService {
     if (users.length === 0) return null;
 
     const user = this.formatUser(users[0]);
-    
+
     // Mettre en cache (5 minutes)
     await this.redis.set(`user:${userId}`, JSON.stringify(user), 300);
 
@@ -96,13 +96,15 @@ export class UserService {
 
   // Rechercher des utilisateurs
   async search(query: string, limit: number = 20): Promise<User[]> {
+    // Les jokers SQL de la saisie (%, _) sont échappés : « % » listait tout.
+    const escaped = query.replace(/[\\%_]/g, (c) => `\\${c}`);
     const [rows] = await this.db.query(
-      `SELECT id, username, display_name, avatar_url, banner_url, card_color, 
+      `SELECT id, username, display_name, avatar_url, banner_url, card_color,
               badges, show_badges, hidden_badge_ids, role, status, is_online
-       FROM users 
-       WHERE username LIKE ? OR display_name LIKE ?
+       FROM users
+       WHERE (username LIKE ? OR display_name LIKE ?) AND email NOT LIKE 'deleted\\_%@anonymous.local'
        LIMIT ?`,
-      [`%${query}%`, `%${query}%`, String(limit)]
+      [`%${escaped}%`, `%${escaped}%`, String(limit)]
     );
 
     return (rows as any[]).map(row => this.formatUser(row));
@@ -278,16 +280,32 @@ export class UserService {
     };
 
     const jsonFields = new Set(['interests', 'notifKeywords', 'layoutPrefs', 'appPrefs']);
+    const booleanFields = new Set([
+      'notificationsDesktop', 'notificationsSound', 'notificationsMentions', 'notificationsDm',
+      'privacyShowOnline', 'privacyAllowFriendRequests', 'dndEnabled',
+    ]);
     const updates: string[] = [];
     const params: any[] = [];
 
     for (const [key, column] of Object.entries(allowedFields)) {
       if ((data as any)[key] !== undefined) {
-        updates.push(`${column} = ?`);
         let value = (data as any)[key];
-        if (jsonFields.has(key) && value !== null && typeof value === 'object') {
+        if (key === 'privacyAllowDm') {
+          // Le front envoie un booléen (« autoriser les inconnus »), la colonne
+          // est une ENUM : `false` y était enregistré comme '' et la lecture
+          // `Boolean('friends')` affichait l'inverse du réglage réel.
+          value = value === true || value === 'everyone' ? 'everyone'
+            : value === 'none' ? 'none'
+            : 'friends';
+        } else if (booleanFields.has(key)) {
+          value = value === true || value === 1 || value === 'true';
+        } else if (jsonFields.has(key) && value !== null && typeof value === 'object') {
           value = JSON.stringify(value);
+          if (value.length > 65535) continue;
+        } else if (typeof value === 'string' && value.length > 2000) {
+          continue;
         }
+        updates.push(`${column} = ?`);
         params.push(value);
       }
     }
@@ -407,8 +425,8 @@ export class UserService {
     if (users.length === 0 || !users[0].badges) return [];
 
     try {
-      return typeof users[0].badges === 'string' 
-        ? JSON.parse(users[0].badges) 
+      return typeof users[0].badges === 'string'
+        ? JSON.parse(users[0].badges)
         : users[0].badges;
     } catch {
       return [];
@@ -418,7 +436,7 @@ export class UserService {
   // Attribuer un badge à un utilisateur
   async addBadge(userId: string, badgeType: BadgeType): Promise<void> {
     const badges = await this.getBadges(userId);
-    
+
     // Vérifier si le badge existe déjà
     if (badges.find(b => b.id === badgeType)) {
       return;
@@ -438,7 +456,7 @@ export class UserService {
     };
 
     badges.push(newBadge);
-    
+
     // Trier les badges par ordre
     badges.sort((a, b) => {
       const orderA = BADGE_DEFINITIONS[a.id as BadgeType]?.order ?? 999;
@@ -569,9 +587,11 @@ export class UserService {
       notificationsSound: Boolean(row.notifications_sound),
       notificationsMentions: Boolean(row.notifications_mentions),
       notificationsDm: Boolean(row.notifications_dm),
-      privacyShowOnline: Boolean(row.privacy_show_online),
-      privacyAllowDm: Boolean(row.privacy_allow_dm),
-      privacyAllowFriendRequests: Boolean(row.privacy_allow_friend_requests),
+      privacyShowOnline: row.privacy_show_online === null || row.privacy_show_online === undefined ? true : Boolean(row.privacy_show_online),
+      // Booléen historique (« les inconnus peuvent m'écrire ») + mode exact.
+      privacyAllowDm: row.privacy_allow_dm === 'everyone',
+      privacyAllowDmMode: (['everyone', 'friends', 'none'].includes(row.privacy_allow_dm) ? row.privacy_allow_dm : 'everyone'),
+      privacyAllowFriendRequests: row.privacy_allow_friend_requests === null || row.privacy_allow_friend_requests === undefined ? true : Boolean(row.privacy_allow_friend_requests),
       birthday: formatDate(row.birthday),
       timezone: row.timezone || undefined,
       interests: parseJsonField(row.interests),
@@ -596,16 +616,31 @@ export class UserService {
   // Vérifier si viewerId est dans la liste bloquée de targetId
   // (targetId a bloqué viewerId → cacher le profil de targetId au viewerId)
   async isBlockedBy(viewerId: string, targetId: string): Promise<boolean> {
-    // La table blocked_users est dans le service friends mais répliquée en Redis
-    // Pour éviter une requête cross-service, on fait une query directe sur la DB partagée
+    // Les blocages vivent dans la table `friends` (status = 'blocked'), base
+    // partagée. L'ancienne requête visait une table `blocked_users` inexistante :
+    // l'erreur était avalée et le profil restait visible aux comptes bloqués.
     try {
       const [rows] = await this.db.query(
-        `SELECT 1 FROM blocked_users WHERE user_id = ? AND blocked_user_id = ? LIMIT 1`,
+        `SELECT 1 FROM friends WHERE user_id = ? AND friend_id = ? AND status = 'blocked' LIMIT 1`,
         [targetId, viewerId]
       );
       return (rows as any[]).length > 0;
     } catch {
-      return false; // table absente dans ce service DB → ne pas bloquer
+      return false;
+    }
+  }
+
+  /** Réglage « afficher mon statut en ligne » (vrai par défaut). */
+  async showsOnlineStatus(userId: string): Promise<boolean> {
+    try {
+      const [rows] = await this.db.query(
+        'SELECT privacy_show_online FROM user_preferences WHERE user_id = ?',
+        [userId]
+      );
+      const v = (rows as any[])[0]?.privacy_show_online;
+      return v === undefined || v === null || Boolean(v);
+    } catch {
+      return true;
     }
   }
 

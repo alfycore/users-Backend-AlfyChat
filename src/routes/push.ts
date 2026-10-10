@@ -6,7 +6,7 @@
 import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import webpush from 'web-push';
-import { authMiddleware } from '../middleware/auth';
+import { authMiddleware, safeCompare } from '../middleware/auth';
 import { getDatabaseClient } from '../database';
 
 // Configure VAPID once at module load
@@ -19,6 +19,36 @@ if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
 }
 
 export const pushRouter = Router();
+
+/**
+ * Hôtes de services push reconnus. L'endpoint d'abonnement était accepté tel
+ * quel : le service émettait ensuite une requête POST vers N'IMPORTE QUELLE
+ * URL (réseau interne compris) à chaque notification — une SSRF à la demande.
+ */
+const PUSH_HOST_SUFFIXES = [
+  'fcm.googleapis.com',
+  'android.googleapis.com',
+  'push.services.mozilla.com',
+  'notify.windows.com',
+  'push.apple.com',
+  'web.push.apple.com',
+];
+
+function isAllowedPushEndpoint(endpoint: unknown): endpoint is string {
+  if (typeof endpoint !== 'string' || endpoint.length > 1024) return false;
+  try {
+    const u = new URL(endpoint);
+    if (u.protocol !== 'https:' || u.username || u.password || (u.port && u.port !== '443')) return false;
+    const host = u.hostname.toLowerCase();
+    return PUSH_HOST_SUFFIXES.some((s) => host === s || host.endsWith(`.${s}`));
+  } catch {
+    return false;
+  }
+}
+
+function isInternal(req: { headers: Record<string, unknown> }): boolean {
+  return safeCompare(req.headers['x-internal-secret'] as string | undefined, process.env.INTERNAL_SECRET);
+}
 
 /**
  * POST /push/subscribe
@@ -36,6 +66,12 @@ pushRouter.post('/subscribe', authMiddleware, async (req, res) => {
 
     if (!endpoint || !keys?.p256dh || !keys?.auth) {
       return res.status(400).json({ error: 'endpoint, keys.p256dh et keys.auth sont requis' });
+    }
+    if (!isAllowedPushEndpoint(endpoint)) {
+      return res.status(400).json({ error: 'Service push non reconnu' });
+    }
+    if (String(keys.p256dh).length > 255 || String(keys.auth).length > 255) {
+      return res.status(400).json({ error: 'Clés invalides' });
     }
 
     const db = getDatabaseClient();
@@ -102,8 +138,7 @@ pushRouter.delete('/subscribe', authMiddleware, async (req, res) => {
  */
 pushRouter.get('/subscriptions/:userId', async (req, res) => {
   // Vérification clé interne
-  const internalSecret = req.headers['x-internal-secret'];
-  if (!internalSecret || internalSecret !== process.env.INTERNAL_SECRET) {
+  if (!isInternal(req)) {
     return res.status(403).json({ error: 'Accès refusé' });
   }
 
@@ -133,7 +168,7 @@ pushRouter.post('/expo-subscribe', authMiddleware, async (req, res) => {
     const userId = (req as any).userId as string;
     const { token, userAgent } = req.body as { token?: string; userAgent?: string };
 
-    if (!token || !token.startsWith('ExponentPushToken[')) {
+    if (!token || typeof token !== 'string' || !/^ExponentPushToken\[[A-Za-z0-9_-]{10,100}\]$/.test(token)) {
       return res.status(400).json({ error: 'token Expo Push valide requis' });
     }
 
@@ -172,8 +207,7 @@ pushRouter.post('/expo-subscribe', authMiddleware, async (req, res) => {
  * Body : { userId, title, body, url, type, conversationKey }
  */
 pushRouter.post('/send', async (req, res) => {
-  const internalSecret = req.headers['x-internal-secret'];
-  if (!internalSecret || internalSecret !== process.env.INTERNAL_SECRET) {
+  if (!isInternal(req)) {
     return res.status(403).json({ error: 'Accès refusé' });
   }
 

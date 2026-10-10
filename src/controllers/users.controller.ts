@@ -9,8 +9,34 @@ import { AuthRequest } from '../types/express';
 import { BadgeType } from '../types/badges';
 import { getDatabaseClient } from '../database';
 import { checkUsername } from '../utils/username-filter';
+import { authService } from '../services/auth.service';
+
+/** Rôle relu en base (req.userRole n'était jamais renseigné : routes inutilisables). */
+async function isAdminUser(userId: string | undefined): Promise<boolean> {
+  if (!userId) return false;
+  const [rows] = await getDatabaseClient().query('SELECT role FROM users WHERE id = ?', [userId]);
+  return (rows as any[])[0]?.role === 'admin';
+}
 
 const userService = new UserService();
+
+/**
+ * URL de média acceptable pour un profil : chemin relatif servi par la
+ * plateforme, ou http(s) sans caractères de contrôle. Les champs étaient
+ * acceptés tels quels (`javascript:`, `data:`…).
+ */
+export function isAcceptableMediaUrl(value: unknown): boolean {
+  if (value === null || value === '') return true;
+  if (typeof value !== 'string' || value.length > 500) return false;
+  if (/^\/(api\/media|uploads)\/[A-Za-z0-9/_.%-]+$/.test(value) && !value.includes('..')) return true;
+  return /^https?:\/\/[^\s<>"'`\\]+$/i.test(value);
+}
+
+/** Champs de profil visibles par des tiers (jamais l'e-mail ni le rôle interne). */
+function publicProfile(user: any) {
+  const { email: _email, ...rest } = user ?? {};
+  return rest;
+}
 
 export class UserController {
   // Récupérer la clé publique E2EE d'un utilisateur
@@ -37,8 +63,11 @@ export class UserController {
   async getUser(req: Request, res: Response) {
     try {
       const { userId } = req.params;
-      // L'ID du viewer peut venir de x-user-id (gateway) ou du query param
-      const viewerId = (req as any).userId || (req.headers['x-user-id'] as string) || (req.query.viewerId as string);
+      // Identité du lecteur : jeton vérifié (optionalAuth) uniquement. Le
+      // `x-user-id` nu et le paramètre `?viewerId=` étaient falsifiables et
+      // permettaient de contourner un blocage.
+      const viewerId = (req as any).userId as string | undefined;
+      const isInternal = (req as any).isInternal === true;
 
       const user = await userService.findById(userId);
 
@@ -46,21 +75,33 @@ export class UserController {
         return res.status(404).json({ error: 'Utilisateur non trouvé' });
       }
 
-      // Vérifier si le viewer est bloqué par cet utilisateur → 404 anonyme
-      if (viewerId && viewerId !== userId) {
+      // Soi-même ou appel interne : profil complet.
+      if (viewerId === userId || (isInternal && !viewerId)) {
+        return res.json(user);
+      }
+
+      // Un tiers ne voit JAMAIS l'adresse e-mail : la route est publique et
+      // la renvoyait pour n'importe quel identifiant.
+      let view: any = publicProfile(user);
+
+      if (viewerId) {
+        // Vérifier si le viewer est bloqué par cet utilisateur → 404 anonyme
         const blocked = await userService.isBlockedBy(viewerId, userId);
         if (blocked) {
           return res.status(404).json({ error: 'Utilisateur non trouvé' });
         }
-
         // Masquer le statut en ligne si l'utilisateur a caché son activité au viewer
-        const activityHidden = await userService.isActivityHiddenFrom(userId, viewerId);
-        if (activityHidden) {
-          return res.json({ ...user, status: 'offline', isOnline: false });
+        if (await userService.isActivityHiddenFrom(userId, viewerId)) {
+          view = { ...view, status: 'offline', isOnline: false };
         }
       }
 
-      res.json(user);
+      // Réglage « afficher mon statut en ligne » (enregistré mais jamais appliqué).
+      if (!(await userService.showsOnlineStatus(userId))) {
+        view = { ...view, status: 'offline', isOnline: false, customStatus: null, statusEmoji: null };
+      }
+
+      res.json(view);
     } catch (error) {
       logger.error('Erreur récupération utilisateur:', error);
       res.status(500).json({ error: 'Erreur serveur' });
@@ -76,7 +117,8 @@ export class UserController {
         return res.status(400).json({ error: 'IDs requis' });
       }
 
-      const userIds = ids.split(',');
+      // Liste bornée et assainie (taille illimitée auparavant).
+      const userIds = [...new Set(ids.split(',').map((s) => s.trim()).filter((s) => /^[0-9a-f-]{36}$/i.test(s)))].slice(0, 100);
       const users = await userService.findByIds(userIds);
 
       res.json(users);
@@ -95,7 +137,7 @@ export class UserController {
         return res.status(400).json({ error: 'Requête de recherche requise' });
       }
 
-      const users = await userService.search(q, parseInt(limit as string));
+      const users = await userService.search(q.slice(0, 64), Math.min(Math.max(parseInt(limit as string) || 20, 1), 50));
       res.json(users);
     } catch (error) {
       logger.error('Erreur recherche utilisateurs:', error);
@@ -109,6 +151,12 @@ export class UserController {
     try {
       const userId = req.userId!;
       const { displayName, avatarUrl, bannerUrl, bio, cardColor, showBadges, hiddenBadgeIds, tutorialCompleted } = req.body;
+      if ((avatarUrl !== undefined && !isAcceptableMediaUrl(avatarUrl)) || (bannerUrl !== undefined && !isAcceptableMediaUrl(bannerUrl))) {
+        return res.status(400).json({ error: 'URL d\'image invalide' });
+      }
+      if (cardColor !== undefined && cardColor !== null && !/^#[0-9a-f]{6}$/i.test(String(cardColor))) {
+        return res.status(400).json({ error: 'Couleur invalide' });
+      }
       await userService.updateProfile(userId, {
         displayName,
         avatarUrl,
@@ -141,6 +189,12 @@ export class UserController {
       }
 
       const { displayName, avatarUrl, bannerUrl, bio, cardColor, showBadges, hiddenBadgeIds, tutorialCompleted } = req.body;
+      if ((avatarUrl !== undefined && !isAcceptableMediaUrl(avatarUrl)) || (bannerUrl !== undefined && !isAcceptableMediaUrl(bannerUrl))) {
+        return res.status(400).json({ error: 'URL d\'image invalide' });
+      }
+      if (cardColor !== undefined && cardColor !== null && !/^#[0-9a-f]{6}$/i.test(String(cardColor))) {
+        return res.status(400).json({ error: 'Couleur invalide' });
+      }
       await userService.updateProfile(userId, { 
         displayName, 
         avatarUrl, 
@@ -186,9 +240,13 @@ export class UserController {
   }
 
   // Mettre à jour le statut personnalisé
-  async updateCustomStatus(req: Request, res: Response) {
+  async updateCustomStatus(req: AuthRequest, res: Response) {
     try {
       const { userId } = req.params;
+      // N'importe quel compte modifiait le statut personnalisé de n'importe qui.
+      if (req.userId !== userId) {
+        return res.status(403).json({ error: 'Non autorisé' });
+      }
       const { customStatus } = req.body;
 
       await userService.updateCustomStatus(userId, customStatus ?? null);
@@ -200,9 +258,13 @@ export class UserController {
   }
 
   // Mettre à jour last seen
-  async updateLastSeen(req: Request, res: Response) {
+  async updateLastSeen(req: AuthRequest, res: Response) {
     try {
       const { userId } = req.params;
+      // Idem : forçait n'importe quel compte « hors ligne ».
+      if (req.userId !== userId) {
+        return res.status(403).json({ error: 'Non autorisé' });
+      }
       await userService.updateLastSeen(userId);
       res.json({ success: true });
     } catch (error) {
@@ -215,6 +277,11 @@ export class UserController {
   async getPreferences(req: AuthRequest, res: Response) {
     try {
       const { userId } = req.params;
+      // Préférences = date de naissance, fuseau, vacances, réglages de
+      // confidentialité… elles étaient lisibles pour n'importe quel compte.
+      if (req.userId !== userId) {
+        return res.status(403).json({ error: 'Non autorisé' });
+      }
       const prefs = await userService.getPreferences(userId);
 
       if (!prefs) {
@@ -260,6 +327,11 @@ export class UserController {
       if (!result.success) {
         return res.status(400).json({ error: result.error });
       }
+
+      // Les autres sessions restaient valides 365 jours après un changement de
+      // mot de passe : un voleur de session gardait l'accès. On ne garde que
+      // la session courante (si elle est connue).
+      await authService.revokeSessions(userId, req.sessionId);
 
       res.json({ success: true });
     } catch (error) {
@@ -332,7 +404,7 @@ export class UserController {
       const { userId } = req.params;
       const { badgeType } = req.body;
 
-      if (req.userRole !== 'admin') {
+      if (!(await isAdminUser(req.userId))) {
         return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
       }
 
@@ -349,7 +421,7 @@ export class UserController {
     try {
       const { userId, badgeId } = req.params;
 
-      if (req.userRole !== 'admin') {
+      if (!(await isAdminUser(req.userId))) {
         return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
       }
 

@@ -11,6 +11,32 @@ import { AuthRequest } from '../types/express';
 import { logger } from '../utils/logger';
 import { emailService } from '../services/email.service';
 import { userService } from '../services/users.service';
+import { adminService } from '../services/admin.service';
+import { getRedisClient } from '../redis';
+import { getClientIp } from '../utils/client-ip';
+import jwt from 'jsonwebtoken';
+
+/**
+ * Plafond des tickets créés SANS compte : chaque ticket envoie un e-mail de
+ * confirmation (avec le sujet saisi) à une adresse arbitraire — un relais de
+ * spam / hameçonnage au nom d'AlfyChat. Limite par IP et par adresse.
+ */
+async function guestQuotaOk(ip: string, email: string): Promise<boolean> {
+  try {
+    const redis = getRedisClient();
+    for (const [key, max, ttl] of [
+      [`helpdesk:guest:ip:${ip}`, 3, 3600],
+      [`helpdesk:guest:mail:${email.toLowerCase()}`, 3, 86400],
+    ] as const) {
+      const n = Number((await redis.get(key)) ?? 0);
+      if (n >= max) return false;
+      await redis.set(key, String(n + 1), ttl);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export const publicHelpdeskRouter = Router();
 
@@ -45,12 +71,12 @@ publicHelpdeskRouter.post(
     // Try to get auth from token (optional)
     let userId: string | null = null;
     const authHeader = req.headers['authorization'];
-    if (authHeader?.startsWith('Bearer ')) {
+    // Plus de secret de repli « default-secret » : sans JWT_SECRET, aucun jeton
+    // n'est accepté (un secret connu de tous aurait permis d'en forger).
+    if (authHeader?.startsWith('Bearer ') && process.env.JWT_SECRET) {
       try {
-        const jwt = await import('jsonwebtoken');
-        const secret = process.env.JWT_SECRET || 'default-secret';
-        const decoded = jwt.default.verify(authHeader.slice(7), secret) as { userId?: string; sub?: string };
-        userId = decoded.userId || decoded.sub || null;
+        const decoded = jwt.verify(authHeader.slice(7), process.env.JWT_SECRET, { algorithms: ['HS256'] }) as { userId?: string; type?: string };
+        if (!decoded.type || decoded.type === 'access') userId = decoded.userId || null;
       } catch { /* token invalide ou absent, on continue */ }
     }
 
@@ -66,6 +92,18 @@ publicHelpdeskRouter.post(
       }
       if (!email) {
         res.status(400).json({ success: false, error: 'Un email est requis pour les demandes liées à votre compte' });
+        return;
+      }
+      // Captcha (si activé) et quotas pour les invités.
+      if (await adminService.isTurnstileEnabled()) {
+        const token = (req.body as any).turnstileToken;
+        if (!token || !(await adminService.verifyTurnstileToken(token))) {
+          res.status(400).json({ success: false, error: 'Vérification captcha échouée' });
+          return;
+        }
+      }
+      if (!(await guestQuotaOk(getClientIp(req), email))) {
+        res.status(429).json({ success: false, error: 'Trop de demandes, réessayez plus tard' });
         return;
       }
     }

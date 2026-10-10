@@ -5,6 +5,33 @@
 import { Request, Response } from 'express';
 import { signalKeysService } from '../services/keys.service';
 import { AuthRequest } from '../types/express';
+import { getRedisClient } from '../redis';
+
+/**
+ * Chaque lecture d'un bundle consomme une one-time prekey du destinataire. La
+ * route était publique et illimitée : n'importe qui pouvait vider le stock de
+ * prékeys d'un compte (dégradant la confidentialité persistante de ses
+ * prochaines sessions X3DH). Au-delà du quota, le bundle est servi SANS
+ * prekey (X3DH reste possible, sans consommer).
+ */
+const PREKEY_PAIR_QUOTA = 5;        // par (demandeur, cible) et par heure
+const PREKEY_REQUESTER_QUOTA = 60;  // par demandeur et par heure
+
+async function mayConsumePrekey(requesterId: string, targetId: string): Promise<boolean> {
+  try {
+    const redis = getRedisClient();
+    const pairKey = `prekeyfetch:${requesterId}:${targetId}`;
+    const reqKey = `prekeyfetch:${requesterId}`;
+    const pair = Number(await redis.get(pairKey) ?? 0);
+    const total = Number(await redis.get(reqKey) ?? 0);
+    if (pair >= PREKEY_PAIR_QUOTA || total >= PREKEY_REQUESTER_QUOTA) return false;
+    await redis.set(pairKey, String(pair + 1), 3600);
+    await redis.set(reqKey, String(total + 1), 3600);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export class SignalKeysController {
   /**
@@ -58,10 +85,12 @@ export class SignalKeysController {
    * Récupérer le bundle de clés d'un autre utilisateur (pour initier une session X3DH).
    * Consomme une one-time prekey.
    */
-  async getBundle(req: Request, res: Response) {
+  async getBundle(req: AuthRequest, res: Response) {
     try {
       const { userId } = req.params;
-      const bundle = await signalKeysService.getBundle(userId);
+      const requesterId = req.userId!;
+      const consume = requesterId !== userId && await mayConsumePrekey(requesterId, userId);
+      const bundle = await signalKeysService.getBundle(userId, consume);
 
       if (!bundle) {
         return res.status(404).json({ error: 'Aucun bundle Signal pour cet utilisateur' });

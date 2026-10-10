@@ -317,6 +317,37 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
     }
   }
 
+  // ── Sécurité — audit du 2026-10-10 ─────────────────────────────────────
+  // 1. Les refresh tokens (365 j) étaient stockés en clair : on ne garde plus
+  //    que leur empreinte SHA-256. Une empreinte fait 64 caractères, un JWT
+  //    bien davantage : la requête est idempotente.
+  try {
+    await db.execute(`UPDATE sessions SET refresh_token = SHA2(refresh_token, 256) WHERE CHAR_LENGTH(refresh_token) > 64`);
+  } catch {
+    // table absente au premier démarrage : rien à migrer
+  }
+
+  // 2. privacy_allow_dm : le front écrivait un booléen dans une ENUM (`true` →
+  //    'everyone', `false` → ''), et la lecture `Boolean('friends')` affichait
+  //    « inconnus autorisés » pour la valeur par défaut 'friends'. On aligne la
+  //    base sur ce que chaque utilisateur VOYAIT dans ses réglages, une seule
+  //    fois (marqueur dans site_settings).
+  try {
+    const [marker] = await db.query(
+      `SELECT setting_value FROM site_settings WHERE setting_key = 'migration_privacy_dm_v2'`
+    );
+    if ((marker as any[]).length === 0) {
+      await db.execute(`UPDATE user_preferences SET privacy_allow_dm = 'everyone' WHERE privacy_allow_dm = 'friends'`);
+      await db.execute(`UPDATE user_preferences SET privacy_allow_dm = 'friends' WHERE privacy_allow_dm = '' OR privacy_allow_dm IS NULL`);
+      await db.execute(`ALTER TABLE user_preferences MODIFY COLUMN privacy_allow_dm ENUM('everyone', 'friends', 'none') DEFAULT 'everyone'`);
+      await db.execute(
+        `INSERT INTO site_settings (setting_key, setting_value) VALUES ('migration_privacy_dm_v2', 'done')`
+      );
+    }
+  } catch {
+    // Migration rejouée au prochain démarrage
+  }
+
   // ==========================================
   // SIGNAL PROTOCOL — Tables E2EE (clés publiques uniquement)
   // Le serveur ne stocke JAMAIS les clés privées

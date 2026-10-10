@@ -4,8 +4,8 @@
 
 import { Router } from 'express';
 import { body, query } from 'express-validator';
-import { userController } from '../controllers/users.controller';
-import { authMiddleware } from '../middleware/auth';
+import { userController, isAcceptableMediaUrl } from '../controllers/users.controller';
+import { authMiddleware, optionalAuth } from '../middleware/auth';
 import { validateRequest } from '../middleware/validate';
 import { authController } from '../controllers/auth.controller';
 import { adminService } from '../services/admin.service';
@@ -49,17 +49,19 @@ usersRouter.patch('/me',
   userController.updateOwnProfile.bind(userController)
 );
 
-// Rechercher des utilisateurs
+// Rechercher des utilisateurs — authentifié (aspiration de l'annuaire sinon)
 usersRouter.get('/search',
-  query('q').isString().isLength({ min: 1 }),
+  authMiddleware,
+  query('q').isString().isLength({ min: 1, max: 64 }),
   query('limit').optional().isInt({ min: 1, max: 50 }),
   validateRequest,
   userController.searchUsers.bind(userController)
 );
 
-// Récupérer plusieurs utilisateurs par IDs
+// Récupérer plusieurs utilisateurs par IDs — authentifié, liste bornée
 usersRouter.get('/batch',
-  query('ids').isString(),
+  authMiddleware,
+  query('ids').isString().isLength({ max: 4000 }),
   validateRequest,
   userController.getUsers.bind(userController)
 );
@@ -75,8 +77,9 @@ usersRouter.get('/:userId/public-key',
   userController.getPublicKey.bind(userController)
 );
 
-// Récupérer un utilisateur
+// Récupérer un utilisateur (public ; l'e-mail n'est rendu qu'à l'intéressé)
 usersRouter.get('/:userId',
+  optionalAuth,
   userController.getUser.bind(userController)
 );
 
@@ -135,8 +138,8 @@ usersRouter.patch('/:userId/preferences',
 // Changer le mot de passe (authentifié)
 usersRouter.post('/:userId/change-password',
   authMiddleware,
-  body('currentPassword').isString().isLength({ min: 1 }),
-  body('newPassword').isString().isLength({ min: 8 }),
+  body('currentPassword').isString().isLength({ min: 1, max: 128 }),
+  body('newPassword').isString().isLength({ min: 8, max: 128 }),
   validateRequest,
   userController.changePassword.bind(userController)
 );
@@ -189,8 +192,23 @@ usersRouter.patch('/:userId/music-presence',
       if ((req as any).userId !== req.params.userId) {
         return res.status(403).json({ error: 'Non autorisé' });
       }
-      const data = req.body; // null pour effacer, ou { title, artist, coverUrl, platform, startedAt }
-      await userService.updateMusicPresence(req.params.userId, data ?? null);
+      const raw = req.body; // null pour effacer, ou { title, artist, coverUrl, platform, startedAt }
+      // Structure imposée : n'importe quel JSON (jusqu'à 2 Mo) était stocké tel quel.
+      let data: any = null;
+      if (raw && typeof raw === 'object' && Object.keys(raw).length > 0) {
+        const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : undefined);
+        if (raw.coverUrl !== undefined && !isAcceptableMediaUrl(raw.coverUrl)) {
+          return res.status(400).json({ error: 'coverUrl invalide' });
+        }
+        data = {
+          title: str(raw.title, 200),
+          artist: str(raw.artist, 200),
+          coverUrl: str(raw.coverUrl, 500),
+          platform: str(raw.platform, 32),
+          startedAt: typeof raw.startedAt === 'number' || typeof raw.startedAt === 'string' ? raw.startedAt : undefined,
+        };
+      }
+      await userService.updateMusicPresence(req.params.userId, data);
       res.json({ success: true });
     } catch {
       res.status(500).json({ error: 'Erreur serveur' });
@@ -208,6 +226,9 @@ usersRouter.patch('/:userId/profile-card',
     try {
       if ((req as any).userId !== req.params.userId) {
         return res.status(403).json({ error: 'Non autorisé' });
+      }
+      if (!isAcceptableMediaUrl(req.body.profileCardUrl ?? null)) {
+        return res.status(400).json({ error: 'URL invalide' });
       }
       await userService.updateProfileCard(req.params.userId, req.body.profileCardUrl ?? null);
       res.json({ success: true });
@@ -304,6 +325,7 @@ usersRouter.post('/me/hide-activity/:targetUserId',
   async (req, res) => {
     try {
       const userId = (req as any).userId;
+      if (!/^[0-9a-f-]{36}$/i.test(req.params.targetUserId)) return res.status(400).json({ error: 'Identifiant invalide' });
       await userService.hideActivityFrom(userId, req.params.targetUserId);
       res.json({ success: true });
     } catch {

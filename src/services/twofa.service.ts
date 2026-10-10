@@ -12,19 +12,33 @@ import { logger } from '../utils/logger';
 
 const APP_NAME = 'AlfyChat';
 
-// Clé de chiffrement du secret TOTP au repos. Dérivée de TWOFA_ENCRYPTION_KEY
-// ou, à défaut, de JWT_SECRET — dans les deux cas on applique un HKDF-like
-// SHA-256 pour obtenir une clé 32 octets stable.
-function deriveTotpKey(): Buffer {
+// Clé de chiffrement du secret TOTP au repos.
+//
+// Elle était dérivée de JWT_SECRET à défaut de TWOFA_ENCRYPTION_KEY — or
+// JWT_SECRET est présent dans les 11 services : la compromission de n'importe
+// lequel exposait tous les secrets 2FA. Une clé dédiée est désormais
+// privilégiée ; la clé dérivée de JWT_SECRET reste acceptée EN LECTURE pour
+// les secrets déjà enregistrés (rechiffrés à la prochaine activation).
+function keyFrom(raw: string): Buffer {
+  return crypto.createHash('sha256').update(`alfychat:totp-key:${raw}`).digest();
+}
+
+function primaryTotpKey(): Buffer {
   const raw = process.env.TWOFA_ENCRYPTION_KEY || process.env.JWT_SECRET || '';
   if (!raw) {
     throw new Error('TWOFA_ENCRYPTION_KEY ou JWT_SECRET doit être défini pour chiffrer le secret TOTP');
   }
-  return crypto.createHash('sha256').update(`alfychat:totp-key:${raw}`).digest();
+  return keyFrom(raw);
+}
+
+function candidateTotpKeys(): Buffer[] {
+  const keys = [primaryTotpKey()];
+  if (process.env.TWOFA_ENCRYPTION_KEY && process.env.JWT_SECRET) keys.push(keyFrom(process.env.JWT_SECRET));
+  return keys;
 }
 
 function encryptTotpSecret(plain: string): string {
-  const key = deriveTotpKey();
+  const key = primaryTotpKey();
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const ct = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
@@ -41,9 +55,17 @@ function decryptTotpSecret(stored: string): string {
   const iv = raw.subarray(0, 12);
   const tag = raw.subarray(12, 28);
   const ct = raw.subarray(28);
-  const decipher = crypto.createDecipheriv('aes-256-gcm', deriveTotpKey(), iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
+  let lastErr: unknown;
+  for (const key of candidateTotpKeys()) {
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr;
 }
 
 export class TwoFactorService {
@@ -73,6 +95,12 @@ export class TwoFactorService {
 
   // Activer le 2FA après vérification du code OTP
   async enable(userId: string, totpCode: string): Promise<{ success: boolean; error?: string; backupCodes?: string[] }> {
+    // Réenrôler par-dessus une 2FA active écrasait le secret avec un simple
+    // jeton d'accès (15 min) : un voleur de session s'appropriait la 2FA et
+    // verrouillait le titulaire. Il faut d'abord la désactiver (code requis).
+    if (await this.isEnabled(userId)) {
+      return { success: false, error: 'La double authentification est déjà active. Désactivez-la d\'abord.' };
+    }
     const pendingSecret = await this.redis.get(`2fa:pending:${userId}`) as string | null;
     if (!pendingSecret) {
       return { success: false, error: 'Session expirée. Veuillez recommencer la configuration.' };
@@ -82,6 +110,7 @@ export class TwoFactorService {
     if (!isValid) {
       return { success: false, error: 'Code invalide. Vérifiez votre application d\'authentification.' };
     }
+    await this.markCodeUsed(userId, totpCode);
 
     // Générer les codes de secours : retournés une seule fois en clair au client,
     // stockés UNIQUEMENT sous forme de hash bcrypt (jamais en clair ni JSON).
@@ -143,11 +172,12 @@ export class TwoFactorService {
     const user = (rows as any[])[0];
     if (!user) return false;
 
-    // Vérifier le code TOTP normal (avec tolérance ±1 step)
+    // Vérifier le code TOTP normal (avec tolérance ±1 step). Un code déjà
+    // utilisé est refusé pendant sa fenêtre de validité (anti-rejeu).
     authenticator.options = { window: 1 };
     const decryptedSecret = decryptTotpSecret(user.totp_secret);
     const isValidTotp = authenticator.verify({ token: totpCode, secret: decryptedSecret });
-    if (isValidTotp) return true;
+    if (isValidTotp) return this.markCodeUsed(userId, totpCode);
 
     // Vérifier les codes de secours — comparés en bcrypt (hash à usage unique).
     if (user.totp_backup_codes) {
@@ -179,6 +209,14 @@ export class TwoFactorService {
     }
 
     return false;
+  }
+
+  /** Marque un code TOTP comme consommé ; faux s'il l'était déjà. */
+  private async markCodeUsed(userId: string, code: string): Promise<boolean> {
+    const key = `2fa:used:${userId}:${code}`;
+    if (await this.redis.get(key)) return false;
+    await this.redis.set(key, '1', 120);
+    return true;
   }
 
   // Vérifier si l'utilisateur a le 2FA activé

@@ -21,6 +21,37 @@ interface TokenPayload {
   userId: string;
   type: 'access' | 'refresh';
   role?: 'user' | 'moderator' | 'admin';
+  /** Identifiant de la session (ligne `sessions`) qui a émis ce jeton. */
+  sid?: string;
+}
+
+/**
+ * Les refresh tokens (valables 365 jours) étaient stockés EN CLAIR : une fuite
+ * de la table `sessions` donnait un accès durable à tous les comptes. Seule
+ * leur empreinte SHA-256 est désormais stockée (et sert de clé de révocation).
+ */
+export function hashRefreshToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+/**
+ * Coupe les connexions temps réel d'un utilisateur (révocation de sessions).
+ * Sans cela, une socket ouverte survivait à « déconnecter tous les appareils »
+ * et au changement de mot de passe.
+ */
+export async function disconnectUserSockets(userId: string): Promise<void> {
+  const secret = process.env.INTERNAL_SECRET;
+  if (!secret) return;
+  try {
+    await fetch(`${process.env.GATEWAY_URL || 'http://localhost:3000'}/internal/users/disconnect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-secret': secret },
+      body: JSON.stringify({ userId }),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch {
+    logger.warn(`Gateway injoignable pour couper les sockets de ${userId}`);
+  }
 }
 
 interface AuthResult {
@@ -270,22 +301,28 @@ export class AuthService {
   async refreshTokens(refreshToken: string): Promise<AuthResult> {
     try {
       // Vérifier le token
-      const payload = jwt.verify(refreshToken, this.JWT_REFRESH_SECRET) as TokenPayload;
+      const payload = jwt.verify(refreshToken, this.JWT_REFRESH_SECRET, { algorithms: ['HS256'] }) as TokenPayload;
 
       if (payload.type !== 'refresh') {
         return { success: false, error: 'Token invalide' };
       }
 
-      // Vérifier que le token n'est pas révoqué
-      const isRevoked = await this.redis.get(`revoked:${refreshToken}`);
+      const tokenHash = hashRefreshToken(refreshToken);
+
+      // Réutilisation d'un refresh token déjà consommé = vol probable (la
+      // rotation fait qu'un client légitime ne le présente qu'une fois) : on
+      // révoque TOUTES les sessions du compte.
+      const isRevoked = await this.redis.get(`revoked:${tokenHash}`);
       if (isRevoked) {
+        logger.warn(`Réutilisation d'un refresh token révoqué pour ${payload.userId} — toutes les sessions sont révoquées`);
+        await this.logoutAll(payload.userId);
         return { success: false, error: 'Token révoqué' };
       }
 
       // Vérifier en base de données
       const [rows] = await this.db.query(
         'SELECT * FROM sessions WHERE refresh_token = ? AND expires_at > NOW()',
-        [refreshToken]
+        [tokenHash]
       );
 
       if ((rows as any[]).length === 0) {
@@ -295,13 +332,20 @@ export class AuthService {
       // Récupérer l'IP/UA de l'ancienne session pour les reporter
       const oldSession = (rows as any[])[0];
 
-      // Révoquer l'ancien token
-      await this.redis.set(`revoked:${refreshToken}`, '1', 7 * 24 * 60 * 60);
+      // Un compte banni ne renouvelle plus ses jetons.
+      const ban = await this.checkBan(payload.userId);
+      if (ban) {
+        return { success: false, error: ban, banned: true };
+      }
+
+      // Révoquer l'ancien token (marqueur conservé assez longtemps pour
+      // détecter une réutilisation)
+      await this.redis.set(`revoked:${tokenHash}`, '1', 30 * 24 * 60 * 60);
 
       // Supprimer l'ancienne session
       await this.db.execute(
         'DELETE FROM sessions WHERE refresh_token = ?',
-        [refreshToken]
+        [tokenHash]
       );
 
       // Générer de nouveaux tokens (conserver IP/UA de l'ancienne session)
@@ -316,36 +360,52 @@ export class AuthService {
     }
   }
 
-  // Déconnexion
-  async logout(refreshToken: string): Promise<void> {
+  // Déconnexion — uniquement une session de l'appelant.
+  async logout(refreshToken: string, userId: string): Promise<void> {
+    const tokenHash = hashRefreshToken(refreshToken);
+    const [rows] = await this.db.query(
+      'SELECT id FROM sessions WHERE refresh_token = ? AND user_id = ?',
+      [tokenHash, userId]
+    );
+    if ((rows as any[]).length === 0) return;
+
     // Révoquer le token
-    await this.redis.set(`revoked:${refreshToken}`, '1', 365 * 24 * 60 * 60);
+    await this.redis.set(`revoked:${tokenHash}`, '1', 365 * 24 * 60 * 60);
 
     // Supprimer la session
     await this.db.execute(
-      'DELETE FROM sessions WHERE refresh_token = ?',
-      [refreshToken]
+      'DELETE FROM sessions WHERE refresh_token = ? AND user_id = ?',
+      [tokenHash, userId]
     );
+  }
+
+  /**
+   * Révoque toutes les sessions d'un utilisateur, sauf éventuellement
+   * `keepSessionId` (la session courante lors d'un changement de mot de passe).
+   */
+  async revokeSessions(userId: string, keepSessionId?: string): Promise<void> {
+    const [rows] = await this.db.query(
+      keepSessionId
+        ? 'SELECT refresh_token FROM sessions WHERE user_id = ? AND id <> ?'
+        : 'SELECT refresh_token FROM sessions WHERE user_id = ?',
+      keepSessionId ? [userId, keepSessionId] : [userId]
+    );
+    for (const row of rows as any[]) {
+      await this.redis.set(`revoked:${row.refresh_token}`, '1', 365 * 24 * 60 * 60);
+    }
+    await this.db.execute(
+      keepSessionId
+        ? 'DELETE FROM sessions WHERE user_id = ? AND id <> ?'
+        : 'DELETE FROM sessions WHERE user_id = ?',
+      keepSessionId ? [userId, keepSessionId] : [userId]
+    );
+    // Les sockets ouvertes survivaient à la révocation.
+    await disconnectUserSockets(userId);
   }
 
   // Déconnexion de toutes les sessions
   async logoutAll(userId: string): Promise<void> {
-    // Récupérer tous les refresh tokens
-    const [rows] = await this.db.query(
-      'SELECT refresh_token FROM sessions WHERE user_id = ?',
-      [userId]
-    );
-
-    // Révoquer tous les tokens
-    for (const row of rows as any[]) {
-      await this.redis.set(`revoked:${row.refresh_token}`, '1', 365 * 24 * 60 * 60);
-    }
-
-    // Supprimer toutes les sessions
-    await this.db.execute(
-      'DELETE FROM sessions WHERE user_id = ?',
-      [userId]
-    );
+    await this.revokeSessions(userId);
 
     // Mettre l'utilisateur hors ligne
     await userService.updateStatus(userId, 'offline');
@@ -354,7 +414,7 @@ export class AuthService {
   // Vérifier un token d'accès
   verifyAccessToken(token: string): { valid: boolean; userId?: string } {
     try {
-      const payload = jwt.verify(token, this.JWT_SECRET) as TokenPayload;
+      const payload = jwt.verify(token, this.JWT_SECRET, { algorithms: ['HS256'] }) as TokenPayload;
       
       if (payload.type !== 'access') {
         return { valid: false };
@@ -414,26 +474,30 @@ export class AuthService {
       if ((rows as any[]).length > 0) role = (rows as any[])[0].role || 'user';
     } catch { /* fallback to 'user' */ }
 
+    // L'identifiant de session est connu AVANT la signature : il est porté par
+    // le jeton d'accès (`sid`), ce qui permet de révoquer « toutes les autres
+    // sessions » en épargnant la courante.
+    const sessionId = uuidv4();
+
     const accessToken = jwt.sign(
-      { userId, type: 'access', role } as TokenPayload,
+      { userId, type: 'access', role, sid: sessionId } as TokenPayload,
       this.JWT_SECRET,
-      { expiresIn: this.ACCESS_TOKEN_EXPIRY }
+      { expiresIn: this.ACCESS_TOKEN_EXPIRY, algorithm: 'HS256' }
     );
 
     const refreshToken = jwt.sign(
-      { userId, type: 'refresh' } as TokenPayload,
+      { userId, type: 'refresh', sid: sessionId, jti: uuidv4() } as TokenPayload & { jti: string },
       this.JWT_REFRESH_SECRET,
-      { expiresIn: this.REFRESH_TOKEN_EXPIRY }
+      { expiresIn: this.REFRESH_TOKEN_EXPIRY, algorithm: 'HS256' }
     );
 
-    // Sauvegarder la session
-    const sessionId = uuidv4();
+    // Sauvegarder la session — empreinte du refresh token uniquement
     const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
     await this.db.execute(
       `INSERT INTO sessions (id, user_id, refresh_token, expires_at, ip_address, user_agent)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [sessionId, userId, refreshToken, expiresAt, ipAddress ?? null, userAgent ?? null]
+      [sessionId, userId, hashRefreshToken(refreshToken), expiresAt, ipAddress ?? null, (userAgent ?? '').slice(0, 512) || null]
     );
 
     return {
@@ -486,7 +550,7 @@ export class AuthService {
       return { success: false, error: 'Session introuvable' };
     }
     const { refresh_token } = sessions[0];
-    await this.redis.set(`revoked:${refresh_token}`, '1', 7 * 24 * 60 * 60);
+    await this.redis.set(`revoked:${refresh_token}`, '1', 365 * 24 * 60 * 60);
     await this.db.execute('DELETE FROM sessions WHERE id = ? AND user_id = ?', [sessionId, userId]);
     return { success: true };
   }
@@ -608,8 +672,19 @@ export class AuthService {
     };
   }
 
-  // Sauvegarder les clés E2EE pour un utilisateur existant
-  async saveUserKeys(userId: string, publicKey: string, encryptedPrivateKey: string, keySalt: string): Promise<{ success: boolean; error?: string }> {
+  // Sauvegarder les clés E2EE pour un utilisateur existant.
+  // Remplacer une clé EXISTANTE exige le mot de passe : un jeton d'accès volé
+  // (15 min) suffisait à substituer sa propre clé publique et à intercepter
+  // les messages chiffrés suivants.
+  async saveUserKeys(userId: string, publicKey: string, encryptedPrivateKey: string, keySalt: string, password?: string): Promise<{ success: boolean; error?: string }> {
+    const [rows] = await this.db.query('SELECT public_key, password_hash FROM users WHERE id = ?', [userId]);
+    const row = (rows as any[])[0];
+    if (!row) return { success: false, error: 'Utilisateur introuvable' };
+    if (row.public_key) {
+      if (typeof password !== 'string' || !password || !(await verifyPassword(password, row.password_hash))) {
+        return { success: false, error: 'Mot de passe requis pour remplacer vos clés de chiffrement' };
+      }
+    }
     await this.db.execute(
       'UPDATE users SET public_key = ?, encrypted_private_key = ?, key_salt = ? WHERE id = ?',
       [publicKey, encryptedPrivateKey, keySalt, userId]
@@ -629,9 +704,13 @@ export class AuthService {
       if (users.length === 0) return { success: true };
 
       const user = users[0];
+      // Un seul lien valide à la fois : le précédent est invalidé.
+      const previous = await this.redis.get(`pwreset:user:${user.id}`);
+      if (previous) await this.redis.del(`pwreset:${previous}`);
       const token = crypto.randomBytes(48).toString('hex');
       // Stocker dans Redis avec TTL de 1h
       await this.redis.set(`pwreset:${token}`, user.id, 3600);
+      await this.redis.set(`pwreset:user:${user.id}`, token, 3600);
       // Envoyer l'email (best-effort)
       await emailService.sendPasswordResetEmail(email, user.username, token);
     } catch (err) {
@@ -661,8 +740,9 @@ export class AuthService {
       [passwordHash, userId]
     );
 
-    // Supprimer le token utilisé
+    // Supprimer le token utilisé (et tout autre lien de réinitialisation en cours)
     await this.redis.del(`pwreset:${token}`);
+    await this.redis.del(`pwreset:user:${userId}`);
 
     // Révoquer toutes les sessions existantes par sécurité
     await this.logoutAll(userId);

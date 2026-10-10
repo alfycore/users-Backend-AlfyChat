@@ -223,6 +223,9 @@ export class AdminService {
       'UPDATE users SET role = ? WHERE id = ?',
       [role, userId]
     );
+    // Le profil (rôle compris) est mis en cache 5 min : purger, sinon le
+    // changement ne s'applique pas tout de suite.
+    try { await getRedisClient().del(`user:${userId}`); } catch { /* cache indisponible */ }
   }
 
   async getUserStats(): Promise<{

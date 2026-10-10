@@ -62,5 +62,6 @@ keysRouter.get('/private-bundle',
 
 // GET /api/users/keys/:userId — Récupérer le bundle d'un autre utilisateur (consomme une prekey)
 keysRouter.get('/:userId',
+  authMiddleware,
   signalKeysController.getBundle.bind(signalKeysController)
 );

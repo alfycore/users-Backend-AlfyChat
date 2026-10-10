@@ -147,8 +147,12 @@ export class AdminController {
       const { userId } = req.params;
       const { role } = req.body;
 
-      if (!['user', 'moderator', 'admin'].includes(role)) {
+      if (!['user', 'moderator', 'admin', 'support_l1', 'support_l2', 'technician'].includes(role)) {
         return res.status(400).json({ error: 'Rôle invalide' });
+      }
+      // Un administrateur ne se retire pas lui-même son rôle par erreur.
+      if (userId === req.userId && role !== 'admin') {
+        return res.status(400).json({ error: 'Impossible de modifier votre propre rôle' });
       }
 
       await adminService.updateUserRole(userId, role);

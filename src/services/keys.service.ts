@@ -83,7 +83,7 @@ export class SignalKeysService {
    * Récupère le bundle de clés d'un utilisateur pour initier une session X3DH.
    * Consomme (supprime) une one-time prekey si disponible.
    */
-  async getBundle(targetUserId: string): Promise<PreKeyBundleResponse | null> {
+  async getBundle(targetUserId: string, consumePrekey = true): Promise<PreKeyBundleResponse | null> {
     const db = this.db;
 
     const [bundles] = await db.query(
@@ -107,7 +107,7 @@ export class SignalKeysService {
       [targetUserId]
     );
 
-    const prekey = (prekeys as any[])[0];
+    const prekey = consumePrekey ? (prekeys as any[])[0] : undefined;
 
     if (prekey) {
       await db.execute(

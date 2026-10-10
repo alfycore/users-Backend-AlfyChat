@@ -5,6 +5,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getDatabaseClient } from '../database';
 import { getRedisClient } from '../redis';
+import { logger } from '../utils/logger';
 
 interface Consent {
   id: string;
@@ -37,7 +38,7 @@ export class RgpdService {
   async exportUserData(userId: string): Promise<UserDataExport> {
     // Récupérer les données utilisateur
     const [userRows] = await this.db.query(
-      `SELECT id, email, username, display_name, avatar_url, bio, status, 
+      `SELECT id, email, username, display_name, avatar_url, bio, status,
               created_at, last_seen_at
        FROM users WHERE id = ?`,
       [userId]
@@ -161,15 +162,15 @@ export class RgpdService {
     if ((existing as any[]).length > 0) {
       if (granted) {
         await this.db.execute(
-          `UPDATE rgpd_consents 
-           SET granted = TRUE, granted_at = NOW(), revoked_at = NULL 
+          `UPDATE rgpd_consents
+           SET granted = TRUE, granted_at = NOW(), revoked_at = NULL
            WHERE user_id = ? AND consent_type = ?`,
           [userId, consentType]
         );
       } else {
         await this.db.execute(
-          `UPDATE rgpd_consents 
-           SET granted = FALSE, revoked_at = NOW() 
+          `UPDATE rgpd_consents
+           SET granted = FALSE, revoked_at = NOW()
            WHERE user_id = ? AND consent_type = ?`,
           [userId, consentType]
         );
@@ -183,43 +184,95 @@ export class RgpdService {
     }
   }
 
+  /** Exécute une requête de nettoyage sans faire échouer l'ensemble (table absente…). */
+  private async bestEffort(sql: string, params: unknown[]): Promise<void> {
+    try {
+      await this.db.execute(sql, params as any[]);
+    } catch (err) {
+      logger.warn(`RGPD : nettoyage partiel ignoré (${sql.split(' ').slice(0, 4).join(' ')}…)`, { err });
+    }
+  }
+
   // Anonymiser les données utilisateur
   async anonymizeUser(userId: string): Promise<void> {
     const anonymousUsername = `deleted_${uuidv4().slice(0, 8)}`;
-    
-    // Anonymiser l'utilisateur
+
+    // Anonymiser l'utilisateur (identité, contacts, clés, secrets)
     await this.db.execute(
-      `UPDATE users SET 
+      `UPDATE users SET
          email = CONCAT('deleted_', id, '@anonymous.local'),
          username = ?,
          display_name = 'Utilisateur supprimé',
          avatar_url = NULL,
+         banner_url = NULL,
          bio = NULL,
-         password_hash = 'DELETED'
+         custom_status = NULL,
+         password_hash = 'DELETED',
+         public_key = NULL,
+         encrypted_private_key = NULL,
+         key_salt = NULL,
+         totp_secret = NULL,
+         totp_enabled = FALSE,
+         totp_backup_codes = NULL,
+         email_verified = FALSE,
+         is_online = FALSE,
+         status = 'offline'
        WHERE id = ?`,
       [anonymousUsername, userId]
     );
 
-    // Anonymiser les messages (garder pour le contexte mais supprimer le contenu)
-    await this.db.execute(
-      `UPDATE messages SET content = '[Message supprimé]' WHERE author_id = ?`,
+    // Contenu des messages effacé (les métadonnées gardent le fil lisible).
+    // La colonne est `sender_id` : l'ancien `author_id` faisait échouer
+    // toute l'anonymisation.
+    await this.bestEffort(
+      `UPDATE messages SET content = '[Message supprimé]', sender_content = NULL WHERE sender_id = ?`,
+      [userId]
+    );
+    await this.bestEffort(
+      `UPDATE server_messages SET content = '[Message supprimé]' WHERE sender_id = ?`,
       [userId]
     );
 
-    // Supprimer les préférences
-    await this.db.execute(
-      'DELETE FROM user_preferences WHERE user_id = ?',
-      [userId]
-    );
-
-    // Supprimer les sessions
-    await this.db.execute(
-      'DELETE FROM sessions WHERE user_id = ?',
-      [userId]
-    );
+    // Données personnelles annexes
+    await this.bestEffort('DELETE FROM user_preferences WHERE user_id = ?', [userId]);
+    await this.bestEffort('DELETE FROM sessions WHERE user_id = ?', [userId]);
+    await this.bestEffort('DELETE FROM push_subscriptions WHERE user_id = ?', [userId]);
+    await this.bestEffort('DELETE FROM signal_key_bundles WHERE user_id = ?', [userId]);
+    await this.bestEffort('DELETE FROM signal_one_time_prekeys WHERE user_id = ?', [userId]);
+    await this.bestEffort('DELETE FROM friends WHERE user_id = ? OR friend_id = ?', [userId, userId]);
+    await this.bestEffort('DELETE FROM user_archive_db_config WHERE user_id = ?', [userId]);
 
     // Invalider le cache
     await this.redis.del(`user:${userId}`);
+  }
+
+  /**
+   * Exécute les suppressions arrivées à échéance (RGPD art. 17). Les demandes
+   * étaient enregistrées avec une date… sans aucune tâche pour les traiter.
+   * Le compte est anonymisé de façon irréversible (les identifiants restent
+   * pour l'intégrité référentielle des conversations et serveurs).
+   */
+  async processScheduledDeletions(): Promise<number> {
+    const [rows] = await this.db.query(
+      `SELECT user_id FROM rgpd_deletion_requests
+       WHERE completed_at IS NULL AND scheduled_deletion_at <= NOW()
+       ORDER BY scheduled_deletion_at ASC LIMIT 50`,
+      []
+    );
+    let done = 0;
+    for (const row of rows as any[]) {
+      try {
+        await this.anonymizeUser(row.user_id);
+        await this.db.execute(
+          'UPDATE rgpd_deletion_requests SET completed_at = NOW() WHERE user_id = ? AND completed_at IS NULL',
+          [row.user_id]
+        );
+        done++;
+      } catch (err) {
+        logger.error(`RGPD : suppression programmée échouée pour ${row.user_id}`, { err });
+      }
+    }
+    return done;
   }
 
   // Supprimer complètement un utilisateur (appelé après le délai de 30 jours)
@@ -229,8 +282,8 @@ export class RgpdService {
     await this.db.execute('DELETE FROM rgpd_deletion_requests WHERE user_id = ?', [userId]);
     await this.db.execute('DELETE FROM sessions WHERE user_id = ?', [userId]);
     await this.db.execute('DELETE FROM user_preferences WHERE user_id = ?', [userId]);
-    await this.db.execute('DELETE FROM reactions WHERE user_id = ?', [userId]);
-    await this.db.execute('DELETE FROM messages WHERE author_id = ?', [userId]);
+    await this.bestEffort('DELETE FROM message_reactions WHERE user_id = ?', [userId]);
+    await this.bestEffort(`UPDATE messages SET content = '[Message supprimé]', sender_content = NULL, is_deleted = TRUE WHERE sender_id = ?`, [userId]);
     await this.db.execute('DELETE FROM friends WHERE user_id = ? OR friend_id = ?', [userId, userId]);
     await this.db.execute('DELETE FROM server_members WHERE user_id = ?', [userId]);
     await this.db.execute('DELETE FROM call_participants WHERE user_id = ?', [userId]);

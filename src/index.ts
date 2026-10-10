@@ -30,6 +30,9 @@ import { logger } from './utils/logger';
 import { authRouter } from './routes/auth';
 import { pushRouter } from './routes/push';
 import { passwordBackend } from './utils/password';
+import { getClientIp } from './utils/client-ip';
+import { safeCompare } from './middleware/auth';
+import { rgpdService } from './services/rgpd.service';
 const app = express();
 app.set('trust proxy', 1);
 
@@ -47,6 +50,9 @@ const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,
   message: { error: 'Trop de requêtes, réessayez plus tard' },
+  // Clé = IP RÉELLE du client (signée par le gateway). Indexé sur `req.ip`,
+  // le compteur était celui du gateway : partagé par toute la plateforme.
+  keyGenerator: (req) => getClientIp(req),
   // La connexion par QR sonde /auth/remote/poll toutes les 2 s pendant 120 s,
   // soit ~60 appels : sous ce plafond de 100, deux tentatives suffiraient à
   // bloquer la connexion classique de l'utilisateur. Ces routes portent leur
@@ -78,9 +84,7 @@ app.use('/users/push', pushRouter);
 
 // ── Endpoint interne — stats publiques (protégé par x-internal-secret) ───────
 app.get('/internal/stats', async (req, res) => {
-  const secret = req.headers['x-internal-secret'] as string | undefined;
-  const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
-  if (!secret || secret !== INTERNAL_SECRET) {
+  if (!safeCompare(req.headers['x-internal-secret'] as string | undefined, process.env.INTERNAL_SECRET)) {
     return res.status(401).json({ error: 'Non autorisé' });
   }
   try {
@@ -96,9 +100,7 @@ app.get('/internal/stats', async (req, res) => {
 // ── Endpoint interne — statut de modération (protégé par x-internal-secret) ──
 // Utilisé par le gateway pour refuser les connexions WS des comptes bannis.
 app.get('/internal/moderation/:userId', async (req, res) => {
-  const secret = req.headers['x-internal-secret'] as string | undefined;
-  const INTERNAL_SECRET = process.env.INTERNAL_SECRET || '';
-  if (!secret || secret !== INTERNAL_SECRET) {
+  if (!safeCompare(req.headers['x-internal-secret'] as string | undefined, process.env.INTERNAL_SECRET)) {
     return res.status(401).json({ error: 'Non autorisé' });
   }
   try {
@@ -152,7 +154,20 @@ async function start() {
     app.listen(PORT, () => {
       logger.info(`🚀 Service Users démarré sur le port ${PORT}`);
       logger.info(`🔐 Hachage de mot de passe : ${passwordBackend}`);
+      if (!process.env.TWOFA_ENCRYPTION_KEY) {
+        logger.warn('TWOFA_ENCRYPTION_KEY absente : les secrets TOTP restent chiffrés avec une clé dérivée de JWT_SECRET (partagé par tous les services).');
+      }
       startServiceRegistration('users');
+
+      // RGPD (art. 17) : les demandes de suppression étaient enregistrées avec
+      // une date d'exécution… et jamais exécutées. Traitement horaire.
+      const runDeletions = () => {
+        rgpdService.processScheduledDeletions()
+          .then((n) => { if (n > 0) logger.info(`RGPD : ${n} compte(s) supprimé(s) à échéance`); })
+          .catch((err) => logger.error('RGPD : échec du traitement des suppressions programmées', err));
+      };
+      setTimeout(runDeletions, 60_000).unref();
+      setInterval(runDeletions, 60 * 60 * 1000).unref();
     });
   } catch (error) {
     logger.error('Erreur au démarrage:', error);

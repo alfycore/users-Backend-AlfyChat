@@ -30,6 +30,7 @@ export interface UserPreferences {
   notificationsDm: boolean;
   privacyShowOnline: boolean;
   privacyAllowDm: boolean;
+  privacyAllowDmMode?: 'everyone' | 'friends' | 'none';
   privacyAllowFriendRequests: boolean;
   // Extended settings
   birthday?: string;
