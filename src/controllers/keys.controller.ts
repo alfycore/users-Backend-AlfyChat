@@ -127,6 +127,23 @@ export class SignalKeysController {
   }
 
   /**
+   * POST /api/users/keys/ecdh/batch  { userIds: string[] }
+   * Clés ECDH publiques par lot (groupes chiffrés) — n'en consomme aucune.
+   */
+  async getEcdhKeys(req: AuthRequest, res: Response) {
+    try {
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const raw: unknown[] = Array.isArray(req.body?.userIds) ? req.body.userIds : [];
+      const userIds = [...new Set(raw.filter((id): id is string => typeof id === 'string' && UUID_RE.test(id)))].slice(0, 100);
+      const keys = await signalKeysService.getEcdhKeys(userIds);
+      res.json({ keys });
+    } catch (error) {
+      console.error('[Signal] Erreur lecture clés ECDH:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
+
+  /**
    * PATCH /api/users/keys/ecdh
    * Met à jour uniquement la clé ECDH P-256 du bundle existant.
    */

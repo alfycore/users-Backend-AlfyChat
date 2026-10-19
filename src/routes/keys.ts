@@ -38,6 +38,14 @@ keysRouter.post('/prekeys',
   signalKeysController.addPrekeys.bind(signalKeysController)
 );
 
+// POST /api/users/keys/ecdh/batch — Clés ECDH publiques de plusieurs comptes (sans consommer de prékey)
+keysRouter.post('/ecdh/batch',
+  authMiddleware,
+  body('userIds').isArray({ min: 1, max: 100 }).withMessage('userIds requis (1 à 100)'),
+  validateRequest,
+  signalKeysController.getEcdhKeys.bind(signalKeysController)
+);
+
 // PATCH /api/users/keys/ecdh — Mettre à jour la clé ECDH P-256 uniquement
 keysRouter.patch('/ecdh',
   authMiddleware,

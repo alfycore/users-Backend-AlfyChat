@@ -189,6 +189,22 @@ export class SignalKeysService {
   }
 
   /**
+   * Clés ECDH P-256 publiques de plusieurs comptes (chiffrement des groupes).
+   * Lecture seule : aucune prékey consommée. `null` = pas encore de clé.
+   */
+  async getEcdhKeys(userIds: string[]): Promise<Record<string, string | null>> {
+    const out: Record<string, string | null> = {};
+    for (const id of userIds) out[id] = null;
+    if (userIds.length === 0) return out;
+    const [rows] = await this.db.query(
+      `SELECT user_id, ecdh_key FROM signal_key_bundles WHERE user_id IN (${userIds.map(() => '?').join(',')})`,
+      userIds
+    );
+    for (const row of rows as any[]) out[row.user_id] = row.ecdh_key ?? null;
+    return out;
+  }
+
+  /**
    * Met à jour uniquement la clé ECDH P-256 du bundle existant.
    */
   async updateECDHKey(userId: string, ecdhKey: string): Promise<void> {
