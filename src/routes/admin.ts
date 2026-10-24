@@ -166,3 +166,27 @@ adminRouter.patch('/changelogs/:changelogId',
 adminRouter.delete('/changelogs/:changelogId',
   adminController.deleteChangelog.bind(adminController)
 );
+
+// ============ LIENS COURTS ============
+// Même contraintes que le redirecteur : slug [a-z0-9_-], cible https uniquement
+
+adminRouter.get('/short-links',
+  adminController.getShortLinks.bind(adminController)
+);
+
+adminRouter.post('/short-links',
+  body('slug').isString().trim().matches(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/),
+  body('targetUrl').isString().isLength({ max: 2048 }).isURL({ protocols: ['https'], require_protocol: true }),
+  validateRequest,
+  adminController.createShortLink.bind(adminController)
+);
+
+adminRouter.patch('/short-links/:slug',
+  body('targetUrl').isString().isLength({ max: 2048 }).isURL({ protocols: ['https'], require_protocol: true }),
+  validateRequest,
+  adminController.updateShortLink.bind(adminController)
+);
+
+adminRouter.delete('/short-links/:slug',
+  adminController.deleteShortLink.bind(adminController)
+);

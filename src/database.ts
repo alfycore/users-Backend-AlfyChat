@@ -196,6 +196,18 @@ export async function runMigrations(db: ReturnType<typeof getDatabaseClient>): P
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   );
 
+  // Liens courts alfy.chat/<slug> gérés depuis la console admin
+  await db.execute(
+    `CREATE TABLE IF NOT EXISTS short_links (
+      slug VARCHAR(64) PRIMARY KEY,
+      target_url VARCHAR(2048) NOT NULL,
+      clicks INT UNSIGNED NOT NULL DEFAULT 0,
+      created_by VARCHAR(36) DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
   // Migrations incrémentales — ajout des colonnes manquantes
   const alterations = [
     { column: 'banner_url', sql: `ALTER TABLE users ADD COLUMN banner_url TEXT AFTER avatar_url` },

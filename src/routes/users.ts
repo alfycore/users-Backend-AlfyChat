@@ -26,6 +26,20 @@ usersRouter.get('/changelogs', async (req, res) => {
   }
 });
 
+// ============ LIENS COURTS (redirecteur alfy.chat) ============
+// Public : appelé par links-Backend-AlfyChat via GET /api/users/links/:slug
+usersRouter.get('/links/:slug', async (req, res) => {
+  const slug = req.params.slug.toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(slug)) return res.status(404).json({ error: 'Lien introuvable' });
+  try {
+    const targetUrl = await adminService.resolveShortLink(slug);
+    if (!targetUrl) return res.status(404).json({ error: 'Lien introuvable' });
+    res.json({ targetUrl });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // Récupérer l'utilisateur courant (doit être avant /:userId)
 usersRouter.get('/me',
   authMiddleware,

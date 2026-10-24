@@ -308,6 +308,61 @@ export class AdminController {
       res.status(500).json({ error: 'Erreur serveur' });
     }
   }
+
+  // ============ LIENS COURTS ============
+
+  async getShortLinks(req: AuthRequest, res: Response) {
+    try {
+      res.json(await adminService.getShortLinks());
+    } catch (error) {
+      logger.error('Erreur récupération liens courts:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
+
+  async createShortLink(req: AuthRequest, res: Response) {
+    try {
+      const slug = String(req.body.slug).trim().toLowerCase();
+      if (RESERVED_SLUGS.has(slug)) {
+        return res.status(400).json({ error: `« ${slug} » est réservé` });
+      }
+      const created = await adminService.createShortLink(slug, req.body.targetUrl.trim(), req.userId!);
+      if (!created) return res.status(409).json({ error: `Le lien « ${slug} » existe déjà` });
+      logger.info(`Lien court ${slug} créé par ${req.userId}`);
+      res.status(201).json({ success: true });
+    } catch (error) {
+      logger.error('Erreur création lien court:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
+
+  async updateShortLink(req: AuthRequest, res: Response) {
+    try {
+      const slug = req.params.slug.toLowerCase();
+      const updated = await adminService.updateShortLink(slug, req.body.targetUrl.trim());
+      if (!updated) return res.status(404).json({ error: 'Lien introuvable' });
+      logger.info(`Lien court ${slug} modifié par ${req.userId}`);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('Erreur modification lien court:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
+
+  async deleteShortLink(req: AuthRequest, res: Response) {
+    try {
+      const slug = req.params.slug.toLowerCase();
+      await adminService.deleteShortLink(slug);
+      logger.info(`Lien court ${slug} supprimé par ${req.userId}`);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('Erreur suppression lien court:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  }
 }
+
+/** Chemins déjà servis par le redirecteur alfy.chat (links-Backend-AlfyChat) */
+const RESERVED_SLUGS = new Set(['i', 'u', 'b', 'm', 's', 'api', 'health']);
 
 export const adminController = new AdminController();

@@ -579,6 +579,59 @@ export class AdminService {
   async deleteChangelog(changelogId: string) {
     await this.db.execute(`DELETE FROM changelogs WHERE id = ?`, [changelogId]);
   }
+
+  // ============ LIENS COURTS ============
+
+  async getShortLinks() {
+    const [rows] = await this.db.query(
+      `SELECT slug, target_url, clicks, created_at FROM short_links ORDER BY created_at DESC`
+    );
+    return (rows as any[]).map((row) => ({
+      slug: row.slug,
+      targetUrl: row.target_url,
+      clicks: Number(row.clicks),
+      createdAt: row.created_at,
+    }));
+  }
+
+  /** false si le slug est déjà pris */
+  async createShortLink(slug: string, targetUrl: string, createdBy: string): Promise<boolean> {
+    try {
+      await this.db.execute(
+        `INSERT INTO short_links (slug, target_url, created_by) VALUES (?, ?, ?)`,
+        [slug, targetUrl, createdBy]
+      );
+      return true;
+    } catch (error: any) {
+      if (error?.code === 'ER_DUP_ENTRY') return false;
+      throw error;
+    }
+  }
+
+  /** false si le lien n'existe pas */
+  async updateShortLink(slug: string, targetUrl: string): Promise<boolean> {
+    const result = await this.db.execute(
+      `UPDATE short_links SET target_url = ? WHERE slug = ?`,
+      [targetUrl, slug]
+    );
+    return result.affectedRows > 0;
+  }
+
+  async deleteShortLink(slug: string) {
+    await this.db.execute(`DELETE FROM short_links WHERE slug = ?`, [slug]);
+  }
+
+  /** Résout un slug pour le redirecteur et compte le clic */
+  async resolveShortLink(slug: string): Promise<string | null> {
+    const [rows] = await this.db.query(
+      `SELECT target_url FROM short_links WHERE slug = ?`,
+      [slug]
+    );
+    const row = (rows as any[])[0];
+    if (!row) return null;
+    await this.db.execute(`UPDATE short_links SET clicks = clicks + 1 WHERE slug = ?`, [slug]);
+    return row.target_url;
+  }
 }
 
 export const adminService = new AdminService();
