@@ -10,6 +10,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode/utf16"
 )
 
 // JSString reproduit String(v) (template literal) : null → "null".
@@ -185,3 +186,9 @@ func jsNumberValue(v any) (float64, bool) {
 	}
 	return 0, false
 }
+
+// UTF16 renvoie les unités UTF-16 d'une chaîne (String.length, slice…).
+func UTF16(s string) []uint16 { return utf16Units(s) }
+
+// FromUTF16 reconstruit une chaîne depuis des unités UTF-16.
+func FromUTF16(u []uint16) string { return string(utf16.Decode(u)) }
