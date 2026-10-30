@@ -37,7 +37,7 @@ func (h *handlers) exportUserData(ctx context.Context, userID string) (*platform
 		return nil, err
 	}
 	msgs, err := h.db.Rows(ctx, `SELECT id, content, channel_id, recipient_id, created_at
-       FROM messages WHERE author_id = ? ORDER BY created_at DESC`, userID)
+       FROM messages WHERE sender_id = ? ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
