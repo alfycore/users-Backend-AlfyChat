@@ -1,0 +1,832 @@
+{
+ "res": [
+  {
+   "n": "alice",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "Bob_42",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "N1gg3r",
+   "r": {
+    "ok": false,
+    "term": "nigger",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "admin",
+   "r": {
+    "ok": false,
+    "term": "admin",
+    "reason": "Ce pseudo est réservé à la plateforme et ne peut pas être utilisé."
+   }
+  },
+  {
+   "n": "Administrateur",
+   "r": {
+    "ok": false,
+    "term": "admin",
+    "reason": "Ce pseudo est réservé à la plateforme et ne peut pas être utilisé."
+   }
+  },
+  {
+   "n": "moderne",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "mod",
+   "r": {
+    "ok": false,
+    "term": "mod",
+    "reason": "Ce pseudo est réservé à la plateforme et ne peut pas être utilisé."
+   }
+  },
+  {
+   "n": "SuperConnard_92",
+   "r": {
+    "ok": false,
+    "term": "connard",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "Connor",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "Assassin",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "puuuute",
+   "r": {
+    "ok": false,
+    "term": "pute",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "kkk",
+   "r": {
+    "ok": false,
+    "term": "kkk",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "kkkk",
+   "r": {
+    "ok": false,
+    "term": "kkk",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "alfychat_fan",
+   "r": {
+    "ok": false,
+    "term": "alfychat",
+    "reason": "Ce pseudo est réservé à la plateforme et ne peut pas être utilisé."
+   }
+  },
+  {
+   "n": "ALFYCHAT",
+   "r": {
+    "ok": false,
+    "term": "alfychat",
+    "reason": "Ce pseudo est réservé à la plateforme et ne peut pas être utilisé."
+   }
+  },
+  {
+   "n": "héllo",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "éé",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "x",
+   "r": {
+    "ok": false,
+    "reason": "Le pseudo doit contenir au moins 2 caractères alphanumériques."
+   }
+  },
+  {
+   "n": "",
+   "r": {
+    "ok": false,
+    "reason": "Le pseudo ne peut pas être vide."
+   }
+  },
+  {
+   "n": "  ",
+   "r": {
+    "ok": false,
+    "reason": "Le pseudo ne peut pas être vide."
+   }
+  },
+  {
+   "n": "ab",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "Fu(k",
+   "r": {
+    "ok": false,
+    "term": "fuck",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "sh1t",
+   "r": {
+    "ok": false,
+    "term": "shit",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "S4lope",
+   "r": {
+    "ok": false,
+    "term": "salope",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "bitch",
+   "r": {
+    "ok": false,
+    "term": "bitch",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "b!tch",
+   "r": {
+    "ok": false,
+    "term": "bitch",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "Nazi",
+   "r": {
+    "ok": false,
+    "term": "nazi",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "nazie",
+   "r": {
+    "ok": false,
+    "term": "nazi",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "nsdap",
+   "r": {
+    "ok": false,
+    "term": "nsdap",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "ntmtoi",
+   "r": {
+    "ok": false,
+    "term": "ntm",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "tamère",
+   "r": {
+    "ok": false,
+    "term": "tamere",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "tarlouze",
+   "r": {
+    "ok": false,
+    "term": "tarlouze",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "jihad",
+   "r": {
+    "ok": false,
+    "term": "jihad",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "jihadi",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "here",
+   "r": {
+    "ok": false,
+    "term": "here",
+    "reason": "Ce pseudo est réservé à la plateforme et ne peut pas être utilisé."
+   }
+  },
+  {
+   "n": "deleted_user",
+   "r": {
+    "ok": false,
+    "term": "deleted",
+    "reason": "Ce pseudo est réservé à la plateforme et ne peut pas être utilisé."
+   }
+  },
+  {
+   "n": "a-b",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "日本語",
+   "r": {
+    "ok": false,
+    "reason": "Le pseudo doit contenir au moins 2 caractères alphanumériques."
+   }
+  },
+  {
+   "n": "😀😀",
+   "r": {
+    "ok": false,
+    "reason": "Le pseudo doit contenir au moins 2 caractères alphanumériques."
+   }
+  },
+  {
+   "n": "Éléonore",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "pd",
+   "r": {
+    "ok": false,
+    "term": "pd",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "pdg",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "pedo",
+   "r": {
+    "ok": false,
+    "term": "pedo",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "pedophile",
+   "r": {
+    "ok": false,
+    "term": "pedophile",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "xX_killyourself_Xx",
+   "r": {
+    "ok": false,
+    "term": "killyourself",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "K Y S",
+   "r": {
+    "ok": false,
+    "term": "kys",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "kys",
+   "r": {
+    "ok": false,
+    "term": "kys",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "sécurité",
+   "r": {
+    "ok": false,
+    "term": "securite",
+    "reason": "Ce pseudo est réservé à la plateforme et ne peut pas être utilisé."
+   }
+  },
+  {
+   "n": "securite_team",
+   "r": {
+    "ok": false,
+    "term": "securite",
+    "reason": "Ce pseudo est réservé à la plateforme et ne peut pas être utilisé."
+   }
+  },
+  {
+   "n": "Support",
+   "r": {
+    "ok": false,
+    "term": "support",
+    "reason": "Ce pseudo est réservé à la plateforme et ne peut pas être utilisé."
+   }
+  },
+  {
+   "n": "supporter",
+   "r": {
+    "ok": false,
+    "term": "support",
+    "reason": "Ce pseudo est réservé à la plateforme et ne peut pas être utilisé."
+   }
+  },
+  {
+   "n": "helpdeskx",
+   "r": {
+    "ok": false,
+    "term": "helpdesk",
+    "reason": "Ce pseudo est réservé à la plateforme et ne peut pas être utilisé."
+   }
+  },
+  {
+   "n": "HELPDESK1",
+   "r": {
+    "ok": false,
+    "term": "helpdesk",
+    "reason": "Ce pseudo est réservé à la plateforme et ne peut pas être utilisé."
+   }
+  }
+ ],
+ "res2": [
+  {
+   "n": "alice",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "Bob_42",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "N1gg3r",
+   "r": {
+    "ok": false,
+    "term": "nigger",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "admin",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "Administrateur",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "moderne",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "mod",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "SuperConnard_92",
+   "r": {
+    "ok": false,
+    "term": "connard",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "Connor",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "Assassin",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "puuuute",
+   "r": {
+    "ok": false,
+    "term": "pute",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "kkk",
+   "r": {
+    "ok": false,
+    "term": "kkk",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "kkkk",
+   "r": {
+    "ok": false,
+    "term": "kkk",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "alfychat_fan",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "ALFYCHAT",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "héllo",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "éé",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "x",
+   "r": {
+    "ok": false,
+    "reason": "Le pseudo doit contenir au moins 2 caractères alphanumériques."
+   }
+  },
+  {
+   "n": "",
+   "r": {
+    "ok": false,
+    "reason": "Le pseudo ne peut pas être vide."
+   }
+  },
+  {
+   "n": "  ",
+   "r": {
+    "ok": false,
+    "reason": "Le pseudo ne peut pas être vide."
+   }
+  },
+  {
+   "n": "ab",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "Fu(k",
+   "r": {
+    "ok": false,
+    "term": "fuck",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "sh1t",
+   "r": {
+    "ok": false,
+    "term": "shit",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "S4lope",
+   "r": {
+    "ok": false,
+    "term": "salope",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "bitch",
+   "r": {
+    "ok": false,
+    "term": "bitch",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "b!tch",
+   "r": {
+    "ok": false,
+    "term": "bitch",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "Nazi",
+   "r": {
+    "ok": false,
+    "term": "nazi",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "nazie",
+   "r": {
+    "ok": false,
+    "term": "nazi",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "nsdap",
+   "r": {
+    "ok": false,
+    "term": "nsdap",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "ntmtoi",
+   "r": {
+    "ok": false,
+    "term": "ntm",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "tamère",
+   "r": {
+    "ok": false,
+    "term": "tamere",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "tarlouze",
+   "r": {
+    "ok": false,
+    "term": "tarlouze",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "jihad",
+   "r": {
+    "ok": false,
+    "term": "jihad",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "jihadi",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "here",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "deleted_user",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "a-b",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "日本語",
+   "r": {
+    "ok": false,
+    "reason": "Le pseudo doit contenir au moins 2 caractères alphanumériques."
+   }
+  },
+  {
+   "n": "😀😀",
+   "r": {
+    "ok": false,
+    "reason": "Le pseudo doit contenir au moins 2 caractères alphanumériques."
+   }
+  },
+  {
+   "n": "Éléonore",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "pd",
+   "r": {
+    "ok": false,
+    "term": "pd",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "pdg",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "pedo",
+   "r": {
+    "ok": false,
+    "term": "pedo",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "pedophile",
+   "r": {
+    "ok": false,
+    "term": "pedophile",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "xX_killyourself_Xx",
+   "r": {
+    "ok": false,
+    "term": "killyourself",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "K Y S",
+   "r": {
+    "ok": false,
+    "term": "kys",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "kys",
+   "r": {
+    "ok": false,
+    "term": "kys",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "sécurité",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "securite_team",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "Support",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "supporter",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "helpdeskx",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "HELPDESK1",
+   "r": {
+    "ok": true
+   }
+  }
+ ],
+ "res3": [
+  {
+   "n": "banane",
+   "r": {
+    "ok": false,
+    "term": "banane",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "Banane_42",
+   "r": {
+    "ok": false,
+    "term": "banane",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "bananas",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "xfoobarx",
+   "r": {
+    "ok": false,
+    "term": "foobar",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "foo-bar",
+   "r": {
+    "ok": false,
+    "term": "foobar",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "exact1",
+   "r": {
+    "ok": false,
+    "term": "exacti",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  },
+  {
+   "n": "exact12",
+   "r": {
+    "ok": true
+   }
+  },
+  {
+   "n": "Exact_1",
+   "r": {
+    "ok": false,
+    "term": "exacti",
+    "reason": "Ce pseudo contient un terme interdit. Choisis-en un autre."
+   }
+  }
+ ]
+}

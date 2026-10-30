@@ -1,0 +1,130 @@
+[
+ {
+  "id": "founder",
+  "name": "Fondateur",
+  "description": "Membre fondateur d'AlfyChat",
+  "icon": "👑",
+  "color": "#FFD700",
+  "order": 1
+ },
+ {
+  "id": "early_supporter",
+  "name": "Supporter Précoce",
+  "description": "A soutenu AlfyChat dès le début",
+  "icon": "⭐",
+  "color": "#7289DA",
+  "order": 2
+ },
+ {
+  "id": "beta_tester",
+  "name": "Testeur Bêta",
+  "description": "A participé aux tests bêta",
+  "icon": "🧪",
+  "color": "#43B581",
+  "order": 3
+ },
+ {
+  "id": "member_1_year",
+  "name": "Membre 1 An",
+  "description": "Membre depuis 1 an",
+  "icon": "🎂",
+  "color": "#99AAB5",
+  "order": 10
+ },
+ {
+  "id": "member_2_years",
+  "name": "Membre 2 Ans",
+  "description": "Membre depuis 2 ans",
+  "icon": "🎉",
+  "color": "#99AAB5",
+  "order": 11
+ },
+ {
+  "id": "member_3_years",
+  "name": "Membre 3 Ans",
+  "description": "Membre depuis 3 ans",
+  "icon": "🎊",
+  "color": "#99AAB5",
+  "order": 12
+ },
+ {
+  "id": "active_developer",
+  "name": "Développeur Actif",
+  "description": "Développeur actif sur AlfyChat",
+  "icon": "💻",
+  "color": "#5865F2",
+  "order": 20
+ },
+ {
+  "id": "bug_hunter",
+  "name": "Chasseur de Bugs",
+  "description": "A trouvé des bugs critiques",
+  "icon": "🐛",
+  "color": "#43B581",
+  "order": 21
+ },
+ {
+  "id": "verified_bot_developer",
+  "name": "Développeur de Bot Vérifié",
+  "description": "Développeur d'un bot vérifié",
+  "icon": "🤖",
+  "color": "#5865F2",
+  "order": 22
+ },
+ {
+  "id": "contributor",
+  "name": "Contributeur",
+  "description": "A contribué au projet",
+  "icon": "🌟",
+  "color": "#FAA61A",
+  "order": 30
+ },
+ {
+  "id": "translator",
+  "name": "Traducteur",
+  "description": "A aidé à traduire AlfyChat",
+  "icon": "🌍",
+  "color": "#3BA55D",
+  "order": 31
+ },
+ {
+  "id": "moderator",
+  "name": "Modérateur",
+  "description": "Modérateur AlfyChat",
+  "icon": "🛡️",
+  "color": "#ED4245",
+  "order": 40
+ },
+ {
+  "id": "partner",
+  "name": "Partenaire",
+  "description": "Partenaire officiel",
+  "icon": "🤝",
+  "color": "#5865F2",
+  "order": 50
+ },
+ {
+  "id": "staff",
+  "name": "Staff",
+  "description": "Membre de l'équipe",
+  "icon": "👨‍💼",
+  "color": "#5865F2",
+  "order": 60
+ },
+ {
+  "id": "premium",
+  "name": "Premium",
+  "description": "Abonné Premium",
+  "icon": "💎",
+  "color": "#F47FFF",
+  "order": 70
+ },
+ {
+  "id": "booster",
+  "name": "Booster",
+  "description": "Booster de serveur",
+  "icon": "🚀",
+  "color": "#F47FFF",
+  "order": 71
+ }
+]
