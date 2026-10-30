@@ -150,6 +150,8 @@ func Register(srv *platform.Server, db *platform.DB, rdb *redis.Client, auth *pl
 	route("POST /auth/remote/claim", h.apiRemoteClaim, a)
 	route("POST /auth/remote/approve", h.apiRemoteApprove, a)
 	route("POST /auth/remote/deny", h.apiRemoteDeny, a)
+	route("POST /auth/sso/code", h.apiSsoCode, a)
+	route("POST /auth/sso/exchange", h.apiSsoExchange, remoteInit.wrap)
 	route("GET /auth/verify-email", h.apiVerifyEmail)
 	route("POST /auth/resend-verification", h.apiResendVerification, a)
 	route("POST /auth/resend-verification-email", h.apiResendVerificationByEmail)
