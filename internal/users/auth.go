@@ -66,6 +66,9 @@ type authResult struct {
 	emailNotVerified  bool
 	keyMissing        bool
 	banned            bool
+	// internal : échec côté serveur (Redis/MySQL), pas un refus du jeton. Le
+	// client doit réessayer, surtout pas effacer sa session.
+	internal bool
 }
 
 // checkBan renvoie le message de bannissement, ou "" ; ok=false si la vérification est impossible.
@@ -291,7 +294,9 @@ func (h *handlers) refreshTokens(ctx context.Context, refreshToken string) authR
 		}
 		return authResult{err: "Token invalide ou expiré"}
 	}
-	fail := authResult{err: "Token invalide ou expiré"}
+	// Une panne passagère (Redis, MySQL) renvoyait un 401 : les applis y voyaient
+	// une session révoquée et déconnectaient l'utilisateur.
+	fail := authResult{err: "Service temporairement indisponible", internal: true}
 	userID, _ := claims["userId"].(string)
 	tokenHash := hashRefreshToken(refreshToken)
 

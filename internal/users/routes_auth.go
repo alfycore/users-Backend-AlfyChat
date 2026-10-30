@@ -211,6 +211,10 @@ func (h *handlers) apiRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res := h.refreshTokens(r.Context(), platform.JSString(token))
+	if !res.success && res.internal {
+		platform.Error(w, 503, res.err)
+		return
+	}
 	if !res.success {
 		platform.Error(w, 401, res.err)
 		return

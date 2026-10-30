@@ -162,6 +162,8 @@ func Register(srv *platform.Server, db *platform.DB, rdb *redis.Client, auth *pl
 	route("POST /auth/2fa/enable", h.apiEnable2FA, a)
 	route("POST /auth/2fa/disable", h.apiDisable2FA, a)
 	route("GET /auth/keys", h.apiGetKeys, a)
+	// Signalements de contenu (mobile) — voir reports.go.
+	route("POST /reports", h.apiCreateReport, a)
 	route("PATCH /auth/keys", h.apiSaveKeys, a)
 	route("GET /auth/me", h.apiMe, a)
 	route("GET /auth/sessions", h.apiSessions, a)
