@@ -163,8 +163,14 @@ func (h *handlers) apiPushSend(w http.ResponseWriter, r *http.Request) {
 		return def
 	}
 	title, body, link, typ, convKey := str0("title", "AlfyChat"), str0("body", ""), str0("url", "/"), str0("type", "message"), str0("conversationKey", "")
+	// Identifiants du message : l'application mobile va le chercher et le
+	// déchiffre elle-même (le serveur ne connaît pas le texte d'un message E2EE).
+	extra := pushExtra{
+		messageID: str0("messageId", ""), conversationID: str0("conversationId", ""), senderID: str0("senderId", ""),
+		encrypted: platform.Truthy(field(r, "encrypted")),
+	}
 
-	rows, err := h.db.Rows(ctx, "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?", platform.SQLParam(userID))
+	rows, err := h.db.Rows(ctx, "SELECT endpoint, p256dh, auth, user_agent FROM push_subscriptions WHERE user_id = ?", platform.SQLParam(userID))
 	if err != nil {
 		pushFail(w, "POST /push/send error:", err)
 		return
@@ -199,7 +205,7 @@ func (h *handlers) apiPushSend(w http.ResponseWriter, r *http.Request) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			h.sendExpo(ctx, expoRows, title, body, link, typ, convKey)
+			h.sendExpo(ctx, expoRows, title, body, link, typ, convKey, extra)
 			done(true) // la promesse d'origine capture toute erreur : elle est toujours « remplie »
 		}()
 	}
@@ -209,7 +215,8 @@ func (h *handlers) apiPushSend(w http.ResponseWriter, r *http.Request) {
 		slog.Warn(fmt.Sprintf("[push/send] VAPID non configuré — skip %d subscription(s) VAPID", len(vapidRows)))
 	}
 	if vapidOK {
-		payload := platform.JSONString(platform.O("title", title, "body", body, "url", link, "type", typ, "conversationKey", convKey))
+		payload := platform.JSONString(platform.O("title", title, "body", body, "url", link, "type", typ, "conversationKey", convKey,
+			"messageId", extra.messageID, "conversationId", extra.conversationID, "senderId", extra.senderID, "encrypted", extra.encrypted))
 		for _, sub := range vapidRows {
 			if !platform.Truthy(sub.Get("p256dh")) || !platform.Truthy(sub.Get("auth")) {
 				continue
@@ -244,16 +251,43 @@ func (h *handlers) apiPushSend(w http.ResponseWriter, r *http.Request) {
 	platform.JSON(w, 200, platform.O("sent", fulfilled, "total", len(rows)))
 }
 
+// pushExtra : identifiants transmis à l'application pour qu'elle compose elle-même la notification.
+type pushExtra struct {
+	messageID, conversationID, senderID string
+	encrypted                           bool
+}
+
 // sendExpo envoie les notifications Expo et purge les jetons invalides ; les erreurs sont absorbées.
-func (h *handlers) sendExpo(ctx context.Context, rows []platform.Row, title, body, link, typ, convKey string) {
+//
+// Message chiffré vers un Android : notification SILENCIEUSE (données seules) —
+// la tâche de fond de l'app va chercher le message, le déchiffre et affiche
+// le texte, même app fermée. Vers un iPhone, iOS ne réveille pas une app
+// fermée pour une notification silencieuse : on garde le texte générique
+// visible, avec `content-available` pour que l'app l'enrichisse quand elle le
+// peut.
+func (h *handlers) sendExpo(ctx context.Context, rows []platform.Row, title, body, link, typ, convKey string, extra pushExtra) {
 	priority := "default"
-	if typ == "mention" {
+	if typ == "mention" || extra.encrypted {
 		priority = "high"
 	}
 	msgs := make([]any, len(rows))
 	for i, s := range rows {
-		msgs[i] = platform.O("to", s.Get("endpoint"), "title", title, "body", body,
-			"data", platform.O("url", link, "type", typ, "conversationKey", convKey), "sound", "default", "priority", priority, "channelId", "default")
+		data := platform.O("url", link, "type", typ, "conversationKey", convKey)
+		if extra.messageID != "" {
+			data.Set("messageId", extra.messageID).Set("conversationId", extra.conversationID).Set("senderId", extra.senderID).Set("encrypted", extra.encrypted)
+		}
+		m := platform.O("to", s.Get("endpoint"), "data", data, "priority", priority, "channelId", "default")
+		android := strings.Contains(strings.ToLower(s.Str("user_agent")), "android")
+		silencieuse := extra.encrypted && typ == "message" && extra.messageID != "" && android
+		if silencieuse {
+			m.Set("_contentAvailable", true)
+		} else {
+			m.Set("title", title).Set("body", body).Set("sound", "default")
+			if extra.encrypted {
+				m.Set("_contentAvailable", true)
+			}
+		}
+		msgs[i] = m
 	}
 	payload := platform.JSONString(msgs)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://exp.host/--/api/v2/push/send", bytes.NewReader([]byte(payload)))
